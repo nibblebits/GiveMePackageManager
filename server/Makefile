@@ -3,7 +3,7 @@ INCLUDES= -I./ -I ../shared
 ADDITIONAL_FLAGS= -g
 
 all: ${OBJECTS}
-	gcc ${INCLUDES} ./main.c ${OBJECTS} ${ADDITIONAL_FLAGS} -lcrypto -lzip -o ./givemeserv 
+	gcc ${INCLUDES} ./main.c ${OBJECTS} ${ADDITIONAL_FLAGS} -lcrypto -pthread -lzip -o ./givemeserv 
 
 clean:
 	rm -rf ${OBJECTS}

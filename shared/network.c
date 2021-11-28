@@ -1,210 +1,75 @@
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <fcntl.h> /* Definition of AT_* constants */
+#include <stdlib.h>
+#include <arpa/inet.h>
 #include <unistd.h>
-#include <assert.h>
-#include <zip.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <stdio.h>
+#include <string.h>
+#include <pthread.h>
 
-#include "config.h"
-#include "misc.h"
 #include "network.h"
 #include "log.h"
-#include "package.h"
-#define LISTEN_BACKLOG 50
-
-#define handle_error(msg)   \
-    do                      \
-    {                       \
-        perror(msg);        \
-        exit(EXIT_FAILURE); \
-    } while (0)
-
-int giveme_connect()
+#include "tpool.h"
+int giveme_udp_network_listen_thread(struct queued_work* work)
 {
-    int sfd, cfd;
-    struct sockaddr_un serv_addr, peer_addr;
-    socklen_t peer_addr_size;
 
-    sfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sfd == -1)
-        handle_error("Issue creating socket");
+    int s = work->private_i;
+    struct sockaddr_in si_other;
 
-    memset(&serv_addr, 0, sizeof(struct sockaddr_un));
-    /* Clear structure */
-    serv_addr.sun_family = AF_UNIX;
-    strncpy(serv_addr.sun_path, GIVEME_CLIENT_SERVER_PATH,
-            sizeof(serv_addr.sun_path) - 1);
+    int slen = sizeof(si_other);
+    int recv_len = 0;
 
-    if (connect(sfd, (struct sockaddr *)&serv_addr,
-                strlen(serv_addr.sun_path) + sizeof(serv_addr.sun_family)) == -1)
-        handle_error("Issue connecting to socket");
-
-    return sfd;
-}
-
-int giveme_af_unix_write(int sfd, struct network_af_unix_packet *packet)
-{
-    int res = 0;
-    size_t amount_to_write = sizeof(struct network_af_unix_packet);
-    while (amount_to_write > 0)
+    while (1)
     {
-        res = write(sfd, packet, amount_to_write);
-        if (res == -1)
-            break;
-        amount_to_write -= res;
-    }
+        struct giveme_udp_packet packet;
+        giveme_log("Waiting for next UDP packet\n");
 
-    if (res > 0)
-    {
-        res = NETWORK_AF_UNIX_PACKET_IO_OKAY;
-    }
-    return res;
-}
-
-int giveme_af_unix_read(int sfd, struct network_af_unix_packet *packet_out)
-{
-    int res = 0;
-    size_t amount_to_read = sizeof(struct network_af_unix_packet);
-    while (amount_to_read > 0)
-    {
-        res = read(sfd, packet_out, amount_to_read);
-        if (res == -1)
-            break;
-        amount_to_read -= res;
-    }
-
-    if (res > 0)
-    {
-        res = NETWORK_AF_UNIX_PACKET_IO_OKAY;
-    }
-
-    if (res == NETWORK_AF_UNIX_PACKET_IO_OKAY)
-    {
-        // Do we have a friendly message to output?
-        if (packet_out->flags & NETWORK_AF_UNIX_PACKET_FLAG_HAS_FRIENDLY_MESSAGE)
+        if ((recv_len = recvfrom(s, &packet, sizeof(packet), 0, (struct sockaddr *)&si_other, &slen)) == -1)
         {
-            printf("%s\n", packet_out->message);
+            giveme_log("Failed to receive packet\n");
         }
+
+        //print details of the client/peer and the data received
+        giveme_log("Received packet from %s:%d\n", inet_ntoa(si_other.sin_addr), ntohs(si_other.sin_port));
+
+        // //now reply the client with the same data
+        // if (sendto(s, buf, recv_len, 0, (struct sockaddr*) &si_other, slen) == -1)
+        // {
+        // 	die("sendto()");
+        // }
     }
-
-    return res;
+    close(s);
 }
-
-int giveme_download(int sfd, const char *package_name)
+int giveme_udp_network_listen()
 {
-}
+    struct sockaddr_in si_me, si_other;
 
-int giveme_publish(int sfd, const char *filename, const char *package_name)
-{
-    struct network_af_unix_packet packet = {};
-    packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PUBLISH_PACKAGE;
-    strncpy(packet.publish.filename, realpath(filename, NULL), sizeof(packet.publish.filename));
-    strncpy(packet.publish.package, package_name, sizeof(packet.publish.package));
+    int s, i, slen = sizeof(si_other), recv_len;
 
-    // Send the packet
-    if (giveme_af_unix_write(sfd, &packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
-        return -1;
-
-    // Let's read back the publish response
-    struct network_af_unix_packet res_packet;
-    if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
-        return -1;
-
-    // res_packet has our response, lets see if publish was a success
-    assert(res_packet.type == NETWORK_AF_UNIX_PACKET_TYPE_PUBLISH_PACKAGE_RESPONSE);
-    if (!res_packet.publish_res.published)
+    //create a UDP socket
+    if ((s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
     {
+        giveme_log("Problem creating UDP socket\n");
         return -1;
     }
 
+    // zero out the structure
+    memset((char *)&si_me, 0, sizeof(si_me));
+
+    si_me.sin_family = AF_INET;
+    si_me.sin_port = htons(GIVEME_UDP_PORT);
+    si_me.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    //bind socket to port
+    if (bind(s, (struct sockaddr *)&si_me, sizeof(si_me)) == -1)
+    {
+        giveme_log("Failed to bind UDP socket server\n");
+        return -1;
+    }
+
+    giveme_queue_work(giveme_udp_network_listen_thread, (void*)(long)s);
     return 0;
 }
 
-int giveme_network_af_unix_handle_packet_publish(int sock, struct network_af_unix_packet *packet)
-{
-    int res = 0;
-
-    giveme_log("Package publish request %s located at %s\n", packet->publish.package, packet->publish.filename);
-
-    // Let's make an achieve
-    giveme_package_create(packet->publish.filename, packet->publish.package);
-
-    // We have a request from the client to publish a packet to the network
-    // Issue a published response as a test
-    struct network_af_unix_packet res_packet = {};
-    res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PUBLISH_PACKAGE_RESPONSE;
-    res_packet.flags |= NETWORK_AF_UNIX_PACKET_FLAG_HAS_FRIENDLY_MESSAGE;
-    sprintf(res_packet.message, "Your package %s has been published successfully", packet->publish.package);
-    strncpy(res_packet.publish_res.filename, packet->publish.filename, sizeof(res_packet.publish_res.filename));
-    strncpy(res_packet.publish_res.package, packet->publish.package, sizeof(res_packet.publish_res.package));
-
-    giveme_af_unix_write(sock, &res_packet);
-    return res;
-}
-int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet *packet)
-{
-    int res = 0;
-    switch (packet->type)
-    {
-    case NETWORK_AF_UNIX_PACKET_TYPE_PUBLISH_PACKAGE:
-        res = giveme_network_af_unix_handle_packet_publish(sock, packet);
-        break;
-    }
-    return res;
-}
-int giveme_network_server_af_unix_read(int sock)
-{
-    int res = 0;
-    struct network_af_unix_packet packet;
-    res = giveme_af_unix_read(sock, &packet);
-    if (res < 0)
-        return res;
-
-    // We now have a packet lets handle it
-    return giveme_network_af_unix_handle_packet(sock, &packet);
-}
-int giveme_network_listen()
-{
-    unlink(GIVEME_CLIENT_SERVER_PATH);
-    int sfd, cfd;
-    struct sockaddr_un my_addr, peer_addr;
-    socklen_t peer_addr_size;
-
-    sfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sfd == -1)
-        handle_error("Issue creating socket");
-
-    memset(&my_addr, 0, sizeof(struct sockaddr_un));
-    /* Clear structure */
-    my_addr.sun_family = AF_UNIX;
-    strncpy(my_addr.sun_path, GIVEME_CLIENT_SERVER_PATH,
-            sizeof(my_addr.sun_path) - 1);
-
-    if (bind(sfd, (struct sockaddr *)&my_addr,
-             sizeof(struct sockaddr_un)) == -1)
-        handle_error("Issue binding to socket");
-
-    if (listen(sfd, LISTEN_BACKLOG) == -1)
-        handle_error("Issue listening on socket");
-
-    /* Now we can accept incoming connections one
-       at a time using accept(2) */
-
-    peer_addr_size = sizeof(struct sockaddr_un);
-    while (1)
-    {
-        cfd = accept(sfd, (struct sockaddr *)&peer_addr,
-                     &peer_addr_size);
-        if (cfd == -1)
-            handle_error("Issue accepting socket");
-
-        int res = giveme_network_server_af_unix_read(cfd);
-        if (res != NETWORK_AF_UNIX_PACKET_IO_OKAY)
-        {
-            close(cfd);
-        }
-    }
-}

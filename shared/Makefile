@@ -1,4 +1,4 @@
-OBJECTS=./build/log.o ./build/network.o ./build/package.o ./build/sha256.o
+OBJECTS=./build/log.o ./build/af_unix_network.o ./build/network.o ./build/package.o ./build/sha256.o ./build/tpool.o ./build/vector.o
 INCLUDES= -I ./
 ADDITIONAL_FLAGS= -g
 all: ${OBJECTS}
@@ -13,8 +13,18 @@ all: ${OBJECTS}
 ./build/package.o:./package.c
 	gcc ${INCLUDES} ./package.c -c ${ADDITIONAL_FLAGS} -o ./build/package.o 
 
+./build/af_unix_network.o:./af_unix_network.c
+	gcc ${INCLUDES} ./af_unix_network.c -c ${ADDITIONAL_FLAGS} -o ./build/af_unix_network.o 
+
 ./build/network.o:./network.c
 	gcc ${INCLUDES} ./network.c -c ${ADDITIONAL_FLAGS} -o ./build/network.o 
+
+
+./build/tpool.o:./tpool.c
+	gcc ${INCLUDES} ./tpool.c -c ${ADDITIONAL_FLAGS} -o ./build/tpool.o 
+
+./build/vector.o:./vector.c
+	gcc ${INCLUDES} ./vector.c -c ${ADDITIONAL_FLAGS} -o ./build/vector.o 
 
 
 clean:

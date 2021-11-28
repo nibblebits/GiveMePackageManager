@@ -6,7 +6,9 @@
 #include <dirent.h>
 #include <unistd.h>
 #include "config.h"
+#include "af_unix_network.h"
 #include "network.h"
+#include "tpool.h"
 
 void initialize()
 {
@@ -22,7 +24,11 @@ void initialize()
 int main(int argc, char *argv[])
 {
 	initialize();
-	giveme_network_listen();
+	giveme_thread_pool_init(GIVEME_TOTAL_THREADS);
+	giveme_thread_pool_start();
+
+	giveme_udp_network_listen();
+	giveme_af_unix_listen();
 
 	return 0;
 }

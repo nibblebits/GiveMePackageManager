@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include "config.h"
-#include "network.h"
+#include "af_unix_network.h"
 #include "misc.h"
 
 int publish_package(int argc, char*argv[])
@@ -12,7 +12,7 @@ int publish_package(int argc, char*argv[])
 		return -1;
 	}
 
-	int sock = giveme_connect();
+	int sock = giveme_af_unix_connect();
 	giveme_publish(sock, argv[2], argv[3]);
 	
 	return 0;
