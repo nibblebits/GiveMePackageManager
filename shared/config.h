@@ -1,0 +1,7 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+#define GIVEME_MINIMUM_ARGC 2
+#define GIVEME_REQUIRED_PUBLISH_ARGC 4
+#define GIVEME_CLIENT_SERVER_PATH "/tmp/givemebinds"
+#define PACKAGE_NAME_MAX 256
+#endif
