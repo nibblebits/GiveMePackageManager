@@ -3,9 +3,11 @@
 #include <errno.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <zip.h>
 #include "config.h"
 #include "misc.h"
+#include "sha256.h"
 static bool is_dir(const char *dir)
 {
     struct stat st;
@@ -79,5 +81,31 @@ static int zip_directory(const char *input_dir, const char *output_dir)
 
 int giveme_package_create(const char *path, const char *package_name)
 {
-    return zip_directory(path, package_name);
+    int res = 0;
+    char dst_path[PATH_MAX];
+    sprintf(dst_path, "%s/%s/%s.zip",getenv(GIVEME_DATA_BASE_DIRECTORY_ENV), GIVEME_PACKAGE_DIRECTORY, package_name);
+    char sha_buf[SHA256_STRING_LENGTH];
+
+    res = zip_directory(path, dst_path);
+    if (res < 0)
+    {
+        return res;
+    }
+
+    res = sha256_file(dst_path, sha_buf);
+    if (res < 0)
+    {
+        return res;
+    }
+    
+    char dst_path_hashed[PATH_MAX];
+    sprintf(dst_path_hashed, "%s/%s/%s",getenv(GIVEME_DATA_BASE_DIRECTORY_ENV), GIVEME_PACKAGE_DIRECTORY, sha_buf);
+    res = rename(dst_path, dst_path_hashed);
+    if (res < 0)
+    {
+        return res;
+    }
+
+    return res;
+
 }

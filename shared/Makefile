@@ -1,4 +1,4 @@
-OBJECTS=./build/log.o ./build/network.o ./build/package.o
+OBJECTS=./build/log.o ./build/network.o ./build/package.o ./build/sha256.o
 INCLUDES= -I ./
 ADDITIONAL_FLAGS= -g
 all: ${OBJECTS}
@@ -6,6 +6,9 @@ all: ${OBJECTS}
 
 ./build/log.o:./log.c
 	gcc ${INCLUDES} ./log.c -c ${ADDITIONAL_FLAGS} -o ./build/log.o 
+
+./build/sha256.o:./sha256.c
+	gcc ${INCLUDES} ./sha256.c -c ${ADDITIONAL_FLAGS} -o ./build/sha256.o 
 
 ./build/package.o:./package.c
 	gcc ${INCLUDES} ./package.c -c ${ADDITIONAL_FLAGS} -o ./build/package.o 
