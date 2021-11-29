@@ -16,12 +16,12 @@ void sha256_hash_string (unsigned char hash[SHA256_DIGEST_LENGTH], char *outputB
 }
 
 
-void sha256_string(char *string, char* outputBuffer)
+void sha256_data(void* input, char* outputBuffer, size_t size)
 {
     unsigned char hash[SHA256_DIGEST_LENGTH];
     SHA256_CTX sha256;
     SHA256_Init(&sha256);
-    SHA256_Update(&sha256, string, strlen(string));
+    SHA256_Update(&sha256, input, size);
     SHA256_Final(hash, &sha256);
     int i = 0;
     for(i = 0; i < SHA256_DIGEST_LENGTH; i++)
@@ -29,6 +29,10 @@ void sha256_string(char *string, char* outputBuffer)
         sprintf(outputBuffer + (i * 2), "%02x", hash[i]);
     }
     outputBuffer[64] = 0;
+}
+void sha256_string(char *string, char* outputBuffer)
+{
+    sha256_data(string, outputBuffer, strlen(string));
 }
 
 int sha256_file(char *path, char* outputBuffer)

@@ -2,8 +2,8 @@
 #include <unistd.h>
 #include "config.h"
 #include "af_unix_network.h"
+#include "network.h"
 #include "misc.h"
-
 int publish_package(int argc, char*argv[])
 {
 	if (argc < GIVEME_REQUIRED_PUBLISH_ARGC)
@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
 		printf("You must provide a package name to download\n E.g giveme laravel-framework\n\nTo publish do\ngiveme publish DIRECTORY_PATH\n");
 		return -1;
 	}
-
+	
 	if (S_EQ(argv[1], "publish"))
 	{
 		return publish_package(argc, argv);

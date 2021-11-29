@@ -8,6 +8,7 @@
 #include "config.h"
 #include "misc.h"
 #include "sha256.h"
+#include "network.h"
 static bool is_dir(const char *dir)
 {
     struct stat st;
@@ -106,6 +107,11 @@ int giveme_package_create(const char *path, const char *package_name)
         return res;
     }
 
+    // Okay lets create a packet for the network to publish the package
+    struct giveme_udp_packet packet = {};
+    packet.type = GIVEME_UDP_PACKET_TYPE_PUBLISH_PACKAGE;
+    strncpy(packet.package.name, package_name, sizeof(packet.package.name));
+    giveme_udp_broadcast(&packet);
     return res;
 
 }
