@@ -366,6 +366,7 @@ int giveme_tcp_network_download_chain(int sockfd, struct block *last_known_block
 out:
     return res;
 }
+
 void giveme_network_request_blockchain()
 {
     giveme_lock_chain();
@@ -579,6 +580,12 @@ void giveme_network_load_ips()
         giveme_log("inet_aton() failed\n");
     }
 
+    giveme_network_ip_address_add(addr);
+
+    if (inet_aton("67.205.184.222", &addr) == 0)
+    {
+        giveme_log("inet_aton() failed\n");
+    }
     giveme_network_ip_address_add(addr);
 }
 
