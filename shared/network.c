@@ -13,6 +13,7 @@
 #include "log.h"
 #include "tpool.h"
 #include "vector.h"
+#include "misc.h"
 #include "blockchain.h"
 
 struct network network;
@@ -59,6 +60,17 @@ int giveme_tcp_network_connect(struct in_addr addr)
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr = addr;
     servaddr.sin_port = htons(GIVEME_TCP_PORT);
+
+    struct timeval timeout;
+    timeout.tv_sec = GIVEME_NETWORK_TCP_TIMEOUT_SECONDS;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                   sizeof timeout) < 0)
+    {
+        giveme_log("Failed to set socket timeout\n");
+        return -1;
+    }
 
     // connect the client socket to server socket
     if (connect(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
@@ -134,10 +146,10 @@ int giveme_tcp_network_accept(int sock, struct sockaddr_in *client_out)
     return connfd;
 }
 
-int giveme_tcp_send_bytes(int client, void* ptr, size_t amount)
+int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
 {
     size_t amount_left = amount;
-    while(amount_left != 0)
+    while (amount_left != 0)
     {
         int res = send(client, ptr, amount, 0);
         if (res < 0)
@@ -147,13 +159,12 @@ int giveme_tcp_send_bytes(int client, void* ptr, size_t amount)
         amount_left -= res;
     }
     return 0;
-
 }
 
-int giveme_tcp_recv_bytes(int client, void* ptr, size_t amount)
+int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
 {
     size_t amount_left = amount;
-    while(amount_left != 0)
+    while (amount_left != 0)
     {
         int res = recv(client, ptr, amount, 0);
         if (res < 0)
@@ -163,19 +174,17 @@ int giveme_tcp_recv_bytes(int client, void* ptr, size_t amount)
         amount_left -= res;
     }
     return 0;
-
 }
 
-int giveme_tcp_send_packet(int client, struct giveme_tcp_packet* packet)
+int giveme_tcp_send_packet(int client, struct giveme_tcp_packet *packet)
 {
-   return giveme_tcp_send_bytes(client, packet, sizeof(struct giveme_tcp_packet));
+    return giveme_tcp_send_bytes(client, packet, sizeof(struct giveme_tcp_packet));
 }
 
-int giveme_tcp_recv_packet(int client, struct giveme_tcp_packet* packet)
+int giveme_tcp_recv_packet(int client, struct giveme_tcp_packet *packet)
 {
-   return giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_tcp_packet));
+    return giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_tcp_packet));
 }
-
 
 void giveme_udp_network_announce()
 {
@@ -199,10 +208,8 @@ void giveme_udp_network_announce()
     // Let's say hello to this dude.
     struct giveme_tcp_packet tcp_packet = {};
     packet.type = GIVEME_TCP_PACKET_TYPE_HELLO;
-    inet_ntop(AF_INET, &client, tcp_packet.hello.dst_ip, sizeof(struct sockaddr_in));
-
     res = giveme_tcp_send_packet(client_s, &tcp_packet);
-    if(res < 0)
+    if (res < 0)
     {
         giveme_log("Failed to send hello packet via TCP stream\n");
         goto out;
@@ -215,9 +222,7 @@ void giveme_udp_network_announce()
         goto out;
     }
 
-    
-
-    giveme_log("Client responded with HELLO packet my address is %s\n", tcp_packet.hello.dst_ip);
+    giveme_log("Client responded with HELLO packet\n");
 
 out:
     close(client_s);
@@ -227,7 +232,189 @@ out:
 int giveme_network_mine_block(struct queued_work *work)
 {
     struct block *block = work->private;
-    return giveme_mine(block);
+    int mine_res = giveme_mine(block);
+    if (mine_res >= 0)
+    {
+        // Mined successfully then transfer it to the network.
+        giveme_network_block_send(block);
+    }
+}
+
+void giveme_network_block_send(struct block *block)
+{
+    giveme_log("Sending mined %s block to network\n", block->hash);
+    struct giveme_udp_packet packet = {};
+    packet.type = GIVEME_UDP_PACKET_TYPE_BLOCK;
+    memcpy(&packet.block.block, block, sizeof(packet.block.block));
+    giveme_udp_broadcast(&packet);
+}
+
+int giveme_tcp_network_upload_chain(int sockfd, const char *prev_hash)
+{
+    int res = 0;
+    struct block *last_block = giveme_blockchain_back_nosafety();
+    if (!last_block)
+    {
+        giveme_log("%s we have no blocks on our chain to upload\n", __FUNCTION__);
+        return -GIVEME_BLOCKCHAIN_BLOCK_NOT_FOUND;
+    }
+
+    res = giveme_blockchain_set_peek_pointer_to_block_nosafety(prev_hash);
+    if (res < 0)
+    {
+        giveme_log("%s failed to set peek pointer\n", __FUNCTION__);
+        goto out;
+    }
+
+    struct giveme_tcp_packet tcp_packet = {};
+    tcp_packet.type = GIVEME_TCP_PACKET_TYPE_BLOCK_TRANSFER;
+    strncpy(tcp_packet.block_transfer.prev_hash, prev_hash, sizeof(tcp_packet.block_transfer.prev_hash));
+    strncpy(tcp_packet.block_transfer.end_hash, last_block->hash, sizeof(tcp_packet.block_transfer.end_hash));
+    res = giveme_tcp_send_packet(sockfd, &tcp_packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to send block transfer packet\n", __FUNCTION__);
+        goto out;
+    }
+
+    // Ignore the first block because that is the one the peer already knows about
+    giveme_blockchain_peek_nosafety();
+    // Clear the tcp packet as we will reuse it
+    bzero(&tcp_packet, sizeof(tcp_packet));
+    struct block *current_block = giveme_blockchain_peek_nosafety();
+    while (current_block)
+    {
+        tcp_packet.type = GIVEME_TCP_PACKET_TYPE_BLOCK;
+        tcp_packet.block.block = *current_block;
+        res = giveme_tcp_send_packet(sockfd, &tcp_packet);
+        if (res < 0)
+        {
+            giveme_log("%s failed to send block to peer\n", __FUNCTION__);
+            break;
+        }
+        current_block = giveme_blockchain_peek_nosafety();
+    }
+out:
+    return res;
+}
+
+int giveme_tcp_network_download_chain(int sockfd, struct block *last_known_block)
+{
+    int res = 0;
+    struct giveme_tcp_packet tcp_packet;
+    res = giveme_tcp_recv_packet(sockfd, &tcp_packet);
+    if (res < 0)
+    {
+        goto out;
+    }
+
+    if (tcp_packet.type != GIVEME_TCP_PACKET_TYPE_BLOCK_TRANSFER)
+    {
+        // What is this guy sending us...
+        res = GIVEME_RECV_PACKET_UNEXPECTED;
+        goto out;
+    }
+
+    if (!S_EQ(last_known_block->hash, tcp_packet.block_transfer.prev_hash))
+    {
+        // Sender of chain is sending from a different state than we need.
+        res = GIVEME_RECV_PACKET_WRONG_CHAIN;
+        goto out;
+    }
+    if (S_EQ(tcp_packet.block_transfer.prev_hash, tcp_packet.block_transfer.end_hash))
+    {
+        // This client is trying to send us no blocks
+        res = GIVEME_RECV_PACKET_UNEXPECTED;
+        goto out;
+    }
+
+    // Okay great we are on the same page, we can now expect a series of blocks up to end hash
+    char end_hash[SHA256_STRING_LENGTH];
+    strncpy(end_hash, tcp_packet.block_transfer.end_hash, sizeof(end_hash));
+
+    do
+    {
+        res = giveme_tcp_recv_packet(sockfd, &tcp_packet);
+        if (res < 0)
+        {
+            giveme_log("%s Issue receving TCP packet", __FUNCTION__);
+            continue;
+        }
+
+        if (tcp_packet.type != GIVEME_TCP_PACKET_TYPE_BLOCK)
+        {
+            giveme_log("%s peer issued the wrong packet to us, we expected a block packet\n", __FUNCTION__);
+            break;
+        }
+
+        // Let's add the block to our chain
+        res = giveme_blockchain_add_block_nosafety(&tcp_packet.block.block);
+        if (res < 0)
+        {
+            giveme_log("%s failed to add block to blockchain\n", __FUNCTION__);
+            break;
+        }
+
+        if (S_EQ(tcp_packet.block.block.hash, end_hash))
+        {
+            // We are at the end of the transfer? Chao chao
+            break;
+        }
+
+    } while (res >= 0);
+
+out:
+    return res;
+}
+void giveme_network_request_blockchain()
+{
+    giveme_lock_chain();
+
+    struct sockaddr_in tcp_sock;
+    // We want someone to connect to us now once we send that packet
+    int sock = giveme_tcp_network_listen(&tcp_sock);
+    if (sock < 0)
+    {
+        giveme_log("%s failed to listen on TCP server when trying to get blockchain\n", __FUNCTION__);
+        goto out;
+    }
+    giveme_log("%s started TCP server to await blockchain\n", __FUNCTION__);
+    struct block *top_block = giveme_blockchain_back_nosafety();
+    struct giveme_udp_packet packet = {};
+    packet.type = GIVEME_UDP_PACKET_TYPE_REQUEST_CHAIN;
+    if (top_block)
+    {
+        // We need to tell the clients our last hash
+        strncpy(packet.request_chain.hash, packet.request_chain.hash, sizeof(packet.request_chain.hash));
+    }
+
+    // Broadcast our request to random clients we will also need to open a TCP port
+    // for them to connect to us.
+    giveme_udp_broadcast_random(&packet, 5);
+
+    struct sockaddr_in client;
+    int sock_cli = giveme_tcp_network_accept(sock, &client);
+    if (sock_cli < 0)
+    {
+        giveme_log("%s failed to accept client\n", __FUNCTION__);
+        goto out;
+    }
+
+    printf("%s accepted client, downloading blockchain\n", __FUNCTION__);
+    int res = giveme_tcp_network_download_chain(sock_cli, top_block);
+    if (res < 0)
+    {
+        giveme_log("%s failed to download blockchain\n", __FUNCTION__);
+        goto out;
+    }
+
+    giveme_log("%s Downloaded updated blockchain successfully\n", __FUNCTION__);
+
+out:
+    giveme_unlock_chain();
+
+    close(sock);
+    close(sock_cli);
 }
 
 void giveme_udp_network_handle_packet_publish_package(struct giveme_udp_packet *packet, struct in_addr *from_address)
@@ -236,12 +423,6 @@ void giveme_udp_network_handle_packet_publish_package(struct giveme_udp_packet *
     struct block *block = calloc(1, sizeof(struct block));
     strncpy(block->data.package.name, packet->package.name, sizeof(block->data.package.name));
     giveme_queue_work(giveme_network_mine_block, block);
-}
-
-void giveme_network_set_my_ip(const char *ip)
-{
-    // In the future we will need a mechnism of ensuring people aren't telling us fake IP addresses.
-    strncpy(network.my_ip, ip, sizeof(network.my_ip));
 }
 
 int giveme_udp_network_handle_packet_hello(struct giveme_udp_packet *packet, struct in_addr *from_address)
@@ -262,7 +443,7 @@ int giveme_udp_network_handle_packet_hello(struct giveme_udp_packet *packet, str
         giveme_log("Failed to receive a packet via TCP connection\n");
         goto out;
     }
-    
+
     // Let's check we are on agreement here and this is a hello
     if (tcp_packet.type != GIVEME_TCP_PACKET_TYPE_HELLO)
     {
@@ -272,17 +453,73 @@ int giveme_udp_network_handle_packet_hello(struct giveme_udp_packet *packet, str
 
     // Now its our job to send a hello packet back
     giveme_log("%s Received a HELLO packet via TCP connection\n", __FUNCTION__);
-    // We should tell them who they are and send them the packet back
-    inet_ntop(AF_INET, from_address, tcp_packet.hello.dst_ip, sizeof(struct in_addr));
     res = giveme_tcp_send_packet(client, &tcp_packet);
     if (res < 0)
     {
         giveme_log("%s Failed to send HELLO packet to client\n", __FUNCTION__);
     }
-    
-    giveme_log("%s Sent a TCP packet back and I am %s\n", __FUNCTION__, tcp_packet.hello.dst_ip);
+
+    giveme_log("%s Sent a TCP packet back\n", __FUNCTION__);
 out:
     close(client);
+}
+
+int giveme_udp_network_handle_block(struct giveme_udp_packet *packet, struct in_addr *from_address)
+{
+    giveme_lock_chain();
+    giveme_log("%s Received a new network block will try to add it to the chain\n", __FUNCTION__);
+    int res = giveme_blockchain_add_block_nosafety(&packet->block.block);
+    if (res == GIVEME_BLOCKCHAIN_BLOCK_VALID)
+    {
+        giveme_log("%s The block was valid and added to our chain, broadcasting to others\n", __FUNCTION__);
+        giveme_udp_broadcast(packet);
+    }
+    else if (res == GIVEME_BLOCKCHAIN_BAD_PREVIOUS_HASH)
+    {
+        giveme_log("%s Bad previous hash detected for new block\n", __FUNCTION__);
+    }
+    else if (res == GIVEME_BLOCKCHAIN_ALREADY_ON_TAIL)
+    {
+        giveme_log("%s The block is already on the tail\n", __FUNCTION__);
+    }
+    giveme_unlock_chain();
+    return 0;
+}
+
+int giveme_udp_network_handle_request_chain(struct giveme_udp_packet *packet, struct in_addr *from_address)
+{
+    int res = 0;
+    giveme_lock_chain();
+    // Let's see if we are able to handle this request
+    res = giveme_blockchain_set_peek_pointer_to_block_nosafety(packet->request_chain.hash);
+    if (res < 0)
+    {
+        // Nope we don't have the hash that the user is asking for.
+        // This could mean our chain is lagging behind.
+        goto out;
+    }
+
+    int sockfd = giveme_tcp_network_connect(*from_address);
+    if (sockfd < 0)
+    {
+        // We failed to connect
+        giveme_log("%s failed to connect to client who requested a chain\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    res = giveme_tcp_network_upload_chain(sockfd, packet->request_chain.hash);
+    if (res < 0)
+    {
+        giveme_log("%s failed to upload chain to peer\n", __FUNCTION__);
+        goto out;
+    }
+
+out:
+    close(sockfd);
+
+    giveme_unlock_chain();
+    return res;
 }
 
 int giveme_udp_network_handle_packet(struct giveme_udp_packet *packet, struct in_addr *from_address)
@@ -295,6 +532,13 @@ int giveme_udp_network_handle_packet(struct giveme_udp_packet *packet, struct in
         break;
     case GIVEME_UDP_PACKET_TYPE_PUBLISH_PACKAGE:
         giveme_udp_network_handle_packet_publish_package(packet, from_address);
+        break;
+    case GIVEME_UDP_PACKET_TYPE_BLOCK:
+        giveme_udp_network_handle_block(packet, from_address);
+        break;
+
+    case GIVEME_UDP_PACKET_TYPE_REQUEST_CHAIN:
+        giveme_udp_network_handle_request_chain(packet, from_address);
         break;
     }
     return 0;
@@ -334,7 +578,6 @@ void giveme_network_load_ips()
     {
         giveme_log("inet_aton() failed\n");
     }
-
 
     giveme_network_ip_address_add(addr);
 }

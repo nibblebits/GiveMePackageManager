@@ -7,9 +7,13 @@
 #include <stdio.h>
 #include <string.h>
 #include "config.h"
-
+#include "blockchain.h"
 #define GIVEME_UDP_PORT 9987
 #define GIVEME_TCP_PORT 9989
+
+#define GIVEME_RECV_PACKET_OKAY 0
+#define GIVEME_RECV_PACKET_UNEXPECTED -1
+#define GIVEME_RECV_PACKET_WRONG_CHAIN -2
 
 struct network
 {
@@ -24,8 +28,9 @@ struct network
 enum
 {
     GIVEME_UDP_PACKET_TYPE_HELLO,
-    GIVEME_UDP_PACKET_TYPE_BROADCAST_BLOCK,
-    GIVEME_UDP_PACKET_TYPE_PUBLISH_PACKAGE
+    GIVEME_UDP_PACKET_TYPE_BLOCK,
+    GIVEME_UDP_PACKET_TYPE_PUBLISH_PACKAGE,
+    GIVEME_UDP_PACKET_TYPE_REQUEST_CHAIN,
 };
 struct giveme_udp_packet
 {
@@ -42,12 +47,25 @@ struct giveme_udp_packet
             char name[PACKAGE_NAME_MAX];
 
         } package;
+
+        struct giveme_udp_packet_block
+        {
+            struct block block;
+        } block;
+
+        struct giveme_udp_packet_request_chain
+        {
+            // The last block hash the sender of this packet was aware of.
+            char hash[SHA256_STRING_LENGTH];
+        } request_chain;
     };
 };
 
 enum
 {
-    GIVEME_TCP_PACKET_TYPE_HELLO
+    GIVEME_TCP_PACKET_TYPE_HELLO,
+    GIVEME_TCP_PACKET_TYPE_BLOCK,
+    GIVEME_TCP_PACKET_TYPE_BLOCK_TRANSFER
 };
 struct giveme_tcp_packet
 {
@@ -56,9 +74,21 @@ struct giveme_tcp_packet
     {
         struct giveme_tcp_hello_packet
         {
-            // This is the IP address of the destination, it is sent to them so they know who they are.
-            char dst_ip[GIVEME_IP_STRING_SIZE];
+       
         } hello;
+
+        struct giveme_tcp_block_packet
+        {
+            struct block block;
+        } block;
+
+        struct giveme_tcp_block_transfer_packet
+        {
+            // The starting hash in the blockchain that we will be sending blocks for
+            char prev_hash[SHA256_STRING_LENGTH];
+            // The last block hash that will be sent in the block transfer
+            char end_hash[SHA256_STRING_LENGTH];
+        } block_transfer;
     };
 };
 
@@ -82,5 +112,18 @@ void giveme_udp_broadcast(struct giveme_udp_packet *packet);
 void giveme_udp_broadcast_random(struct giveme_udp_packet *packet, int max_packets_sent);
 
 int giveme_udp_network_send(struct in_addr addr, struct giveme_udp_packet *packet);
+
+/**
+ * @brief Sends a block to the network, the block must be mined to be accepted by recipients.
+ * 
+ * @param block 
+ */
+void giveme_network_block_send(struct block* block);
+
+/**
+ * @brief Requests an updated blockchain
+ * 
+ */
+void giveme_network_request_blockchain();
 
 #endif
