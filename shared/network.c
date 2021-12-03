@@ -207,7 +207,7 @@ void giveme_udp_network_announce()
 
     struct giveme_udp_packet packet;
     packet.type = GIVEME_UDP_PACKET_TYPE_HELLO;
-    giveme_udp_broadcast_random(&packet, GIVEME_UDP_MAX_BROADCASTS_FOR_ANNOUNCMENT);
+    giveme_udp_broadcast_random_no_localhost(&packet, GIVEME_UDP_MAX_BROADCASTS_FOR_ANNOUNCMENT);
 
     struct sockaddr_in client;
     int client_s = giveme_tcp_network_accept(sock, &client);
@@ -398,7 +398,7 @@ void giveme_network_request_blockchain()
 
     // Broadcast our request to random clients we will also need to open a TCP port
     // for them to connect to us.
-    giveme_udp_broadcast_random(&packet, 5);
+    giveme_udp_broadcast_random_no_localhost(&packet, 5);
 
     struct sockaddr_in client;
     int sock_cli = giveme_tcp_network_accept(sock, &client);
@@ -648,6 +648,19 @@ void giveme_udp_broadcast_random(struct giveme_udp_packet *packet, int max_packe
     }
 }
 
+void giveme_udp_broadcast_random_no_localhost(struct giveme_udp_packet *packet, int max_packets_sent)
+{
+    size_t total = vector_count(network.ip_addresses);
+    for (int i = 0; i < max_packets_sent; i++)
+    {
+        int random_index = rand() % total;
+        struct in_addr *addr = vector_at(network.ip_addresses, random_index);
+        if (S_EQ(inet_ntoa(*addr), "127.0.0.1"))
+            continue;
+
+        giveme_udp_network_send(*addr, packet);
+    }
+}
 void giveme_udp_broadcast(struct giveme_udp_packet *packet)
 {
     vector_set_peek_pointer(network.ip_addresses, 0);

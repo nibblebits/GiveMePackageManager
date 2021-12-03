@@ -110,6 +110,7 @@ void giveme_udp_broadcast(struct giveme_udp_packet *packet);
  * @param max_packets_sent 
  */
 void giveme_udp_broadcast_random(struct giveme_udp_packet *packet, int max_packets_sent);
+void giveme_udp_broadcast_random_no_localhost(struct giveme_udp_packet *packet, int max_packets_sent);
 
 int giveme_udp_network_send(struct in_addr addr, struct giveme_udp_packet *packet);
 
