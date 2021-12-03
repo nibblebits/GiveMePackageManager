@@ -43,6 +43,7 @@ int main(int argc, char *argv[])
 
 	giveme_udp_network_listen();
 	giveme_udp_network_announce();
+	giveme_network_request_blockchain();
 	giveme_af_unix_listen();
 
 	return 0;
