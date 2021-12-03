@@ -106,6 +106,13 @@ int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out)
         return -1;
     }
 
+    int _true = 1;
+    if(setsockopt(s,SOL_SOCKET,SO_REUSEADDR,&_true,sizeof(int) < 0))
+    {
+        giveme_log("Failed to set socket reusable option\n");
+        return -1;
+    }
+
     // zero out the structure
     memset((char *)&si_me, 0, sizeof(si_me));
 
