@@ -185,12 +185,12 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
 
 int giveme_tcp_send_packet(int client, struct giveme_tcp_packet *packet)
 {
-    return giveme_tcp_send_bytes(client, packet, sizeof(struct giveme_tcp_packet));
+    return giveme_tcp_send_bytes(client, packet, sizeof(struct giveme_tcp_packet)) > 0 ? 0 : -1;
 }
 
 int giveme_tcp_recv_packet(int client, struct giveme_tcp_packet *packet)
 {
-    return giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_tcp_packet));
+    return giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_tcp_packet)) > 0 ? 0 : -1;
 }
 
 void giveme_udp_network_announce()
@@ -263,13 +263,13 @@ int giveme_tcp_network_upload_chain(int sockfd, const char *hash)
     if (!last_block)
     {
         giveme_log("%s we have no blocks on our chain to upload\n", __FUNCTION__);
-        return -GIVEME_BLOCKCHAIN_BLOCK_NOT_FOUND;
+        return GIVEME_BLOCKCHAIN_BLOCK_NOT_FOUND;
     }
 
     if (S_EQ(last_block->hash, hash))
     {
         // Theres nothing to upload
-        return -GIVEME_BLOCKCHAIN_BLOCK_NOT_FOUND;
+        return GIVEME_BLOCKCHAIN_BLOCK_NOT_FOUND;
     }
 
     res = giveme_blockchain_begin_crawl(hash, NULL);
@@ -361,7 +361,7 @@ int giveme_tcp_network_download_chain(int sockfd, struct block *last_known_block
     if(!S_EQ(tcp_packet.block.block.hash, last_known_block->hash))
     {
         giveme_log("%s expecting first block in transfer to be the block we said we was at but %s was provided\n", __FUNCTION__, tcp_packet.block.block.hash);
-        res = -GIVEME_RECV_PACKET_UNEXPECTED;
+        res = GIVEME_RECV_PACKET_UNEXPECTED;
         goto out;
     }
 
