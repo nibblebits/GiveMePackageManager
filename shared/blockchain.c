@@ -244,7 +244,7 @@ int giveme_mine(struct block *block)
         sha256_data(&block->data, block->hash, sizeof(block->data));
     } while (!giveme_mined_nosafety(block));
 
-    giveme_log("Mined a block %s previous block %s\n", block->hash, previous_block->hash);
+    giveme_log("Mined a block %s previous block %s\n", block->hash, previous_block ? previous_block->hash : "NULL");
     // We mined a block? Then add it to the blockchain and tell everyone else about it
     int res = giveme_blockchain_add_block_nosafety(block);
     if (res < 0)
