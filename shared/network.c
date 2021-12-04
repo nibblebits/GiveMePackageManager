@@ -345,32 +345,34 @@ int giveme_tcp_network_download_chain(int sockfd, struct block *last_known_block
     char end_hash[SHA256_STRING_LENGTH];
     strncpy(end_hash, tcp_packet.block_transfer.end_hash, sizeof(end_hash));
 
-    // First block should be our last block and can be ignored
-    res = giveme_tcp_recv_packet(sockfd, &tcp_packet);
-    if (res < 0)
+    if (last_known_block)
     {
-        giveme_log("%s Issue receving TCP packet\n", __FUNCTION__);
-        goto out;
+        // First block should be our last block and can be ignored
+        res = giveme_tcp_recv_packet(sockfd, &tcp_packet);
+        if (res < 0)
+        {
+            giveme_log("%s Issue receving TCP packet\n", __FUNCTION__);
+            goto out;
+        }
+
+        if (tcp_packet.type != GIVEME_TCP_PACKET_TYPE_BLOCK)
+        {
+            giveme_log("%s expecting a type of GIVEME_TCP_PACKET_TYPE_BLOCK\n", __FUNCTION__);
+            res = -GIVEME_RECV_PACKET_UNEXPECTED;
+            goto out;
+        }
+
+        char blank_hash[SHA256_STRING_LENGTH] = {};
+
+        // If we don't know about any blocks yet then obviously its not going to match up when we check
+        // the first block hash.
+        if (!S_EQ(tcp_packet.block.block.hash, last_known_block->hash))
+        {
+            giveme_log("%s expecting first block in transfer to be the block we said we was at but %s was provided\n", __FUNCTION__, tcp_packet.block.block.hash);
+            res = GIVEME_RECV_PACKET_UNEXPECTED;
+            goto out;
+        }
     }
-
-    if (tcp_packet.type != GIVEME_TCP_PACKET_TYPE_BLOCK)
-    {
-        giveme_log("%s expecting a type of GIVEME_TCP_PACKET_TYPE_BLOCK\n", __FUNCTION__);
-        res = -GIVEME_RECV_PACKET_UNEXPECTED;
-        goto out;
-    }
-
-    char blank_hash[SHA256_STRING_LENGTH] = {};
-
-    // If we don't know about any blocks yet then obviously its not going to match up when we check
-    // the first block hash.
-    if(last_known_block && !S_EQ(tcp_packet.block.block.hash, last_known_block->hash))
-    {
-        giveme_log("%s expecting first block in transfer to be the block we said we was at but %s was provided\n", __FUNCTION__, tcp_packet.block.block.hash);
-        res = GIVEME_RECV_PACKET_UNEXPECTED;
-        goto out;
-    }
-
     // Now we get the blocks
     do
     {
