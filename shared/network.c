@@ -197,7 +197,7 @@ void giveme_udp_network_announce()
 {
     // Disabled for now
     return;
-    
+
     int res = 0;
     struct sockaddr_in tcp_sock;
     // We want someone to connect to us now once we send that packet
@@ -269,7 +269,7 @@ int giveme_tcp_network_upload_chain(int sockfd, const char *prev_hash)
         return -GIVEME_BLOCKCHAIN_BLOCK_NOT_FOUND;
     }
 
-    res = giveme_blockchain_set_peek_pointer_to_block_nosafety(prev_hash);
+    res = giveme_blockchain_set_peek_pointer_to_block_with_previous_hash_nosafety(prev_hash);
     if (res < 0)
     {
         giveme_log("%s failed to set peek pointer\n", __FUNCTION__);
@@ -287,8 +287,7 @@ int giveme_tcp_network_upload_chain(int sockfd, const char *prev_hash)
         goto out;
     }
 
-    // Ignore the first block because that is the one the peer already knows about
-    giveme_blockchain_peek_nosafety();
+
     // Clear the tcp packet as we will reuse it
     bzero(&tcp_packet, sizeof(tcp_packet));
     struct block *current_block = giveme_blockchain_peek_nosafety();

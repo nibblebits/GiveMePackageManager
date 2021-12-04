@@ -43,6 +43,7 @@ struct block *giveme_blockchain_peek_nosafety();
 int giveme_block_verify_nosafety(struct block* block);
 int giveme_blockchain_add_block_nosafety(struct block* block);
 int giveme_blockchain_set_peek_pointer_to_block_nosafety(const char* hash);
+int giveme_blockchain_set_peek_pointer_to_block_with_previous_hash_nosafety(const char* hash);
 void giveme_blockchain_initialize();
 void giveme_blockchain_load();
 int giveme_mine(struct block* block);

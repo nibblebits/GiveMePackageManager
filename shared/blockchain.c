@@ -103,6 +103,33 @@ int giveme_blockchain_set_peek_pointer_to_block_nosafety(const char* hash)
     giveme_blockchain_peek_pointer_set_nosafety(i);
     return res;
 }
+
+
+int giveme_blockchain_set_peek_pointer_to_block_with_previous_hash_nosafety(const char* hash)
+{
+    int res = GIVEME_BLOCKCHAIN_BLOCK_NOT_FOUND;
+    giveme_blockchain_reset_peek_pointer_to_end_nosafety();
+    giveme_blockchain_set_peek_backwards_nosafety();
+
+    struct block* block = giveme_blockchain_peek_nosafety();
+    int i = -1;
+    bool found_block = false;
+    while(block)
+    {
+        if (S_EQ(block->data.prev_hash, hash))
+        {
+            res = 0;
+            break;
+        }
+        i++;
+        block = giveme_blockchain_peek_nosafety();
+    }
+
+    giveme_blockchain_set_peek_forwards_nosafety();
+    giveme_blockchain_peek_pointer_set_nosafety(i);
+    return res;
+}
+
 struct block *giveme_blockchain_peek_nosafety()
 {
     struct block *block = vector_peek(memory_blockchain);
