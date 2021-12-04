@@ -324,7 +324,7 @@ int giveme_tcp_network_download_chain(int sockfd, struct block *last_known_block
         goto out;
     }
 
-    if (!S_EQ(last_known_block->hash, tcp_packet.block_transfer.prev_hash))
+    if (last_known_block && !S_EQ(last_known_block->hash, tcp_packet.block_transfer.prev_hash))
     {
         // Sender of chain is sending from a different state than we need.
         res = GIVEME_RECV_PACKET_WRONG_CHAIN;
