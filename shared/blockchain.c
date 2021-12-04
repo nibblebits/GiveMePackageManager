@@ -35,7 +35,7 @@ void giveme_unlock_chain()
     pthread_mutex_unlock(&blockchain_mine_lock);
 }
 
-off_t giveme_blockchain_offset_for_block(const char *hash)
+off_t giveme_blockchain_index_for_block(const char *hash)
 {
     for (int i = blockchain.total - 1; i >= 0; i--)
     {
@@ -57,7 +57,7 @@ int giveme_blockchain_begin_crawl(const char *start_hash, const char *end_hash)
     blockchain.crawl.pos = 0;
     if (start_hash)
     {
-        blockchain.crawl.pos = giveme_blockchain_offset_for_block(start_hash);
+        blockchain.crawl.pos = giveme_blockchain_index_for_block(start_hash);
         res = blockchain.crawl.pos;
     }
 
@@ -235,7 +235,7 @@ void giveme_blockchain_initialize()
     }
 
     blockchain.total = giveme_blockchain_block_count();
-    
+
     if (pthread_mutex_init(&blockchain_mine_lock, NULL) != 0)
     {
         giveme_log("Failed to initialize blockchain mine lock mutex\n");

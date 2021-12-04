@@ -70,8 +70,13 @@ void giveme_lock_chain();
 void giveme_unlock_chain();
 int giveme_block_verify_nosafety(struct block *block) NO_THREAD_SAFETY;
 int giveme_blockchain_add_block_nosafety(struct block *block) NO_THREAD_SAFETY;
+off_t giveme_blockchain_index_for_block(const char *hash);
+
 void giveme_blockchain_initialize();
 void giveme_blockchain_load();
+
+int giveme_blockchain_begin_crawl(const char *start_hash, const char *end_hash);
+struct block *giveme_blockchain_crawl_next(int flags);
 int giveme_mine(struct block *block);
 
 #endif

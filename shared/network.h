@@ -81,7 +81,7 @@ struct giveme_tcp_packet
         struct giveme_tcp_block_transfer_packet
         {
             // The starting hash in the blockchain that we will be sending blocks for
-            char prev_hash[SHA256_STRING_LENGTH];
+            char hash[SHA256_STRING_LENGTH];
             // The last block hash that will be sent in the block transfer
             char end_hash[SHA256_STRING_LENGTH];
         } block_transfer;
