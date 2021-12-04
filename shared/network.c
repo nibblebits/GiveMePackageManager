@@ -501,7 +501,7 @@ int giveme_udp_network_handle_request_chain(struct giveme_udp_packet *packet, st
     int res = 0;
     giveme_lock_chain();
     // Let's see if we are able to handle this request
-    res = giveme_blockchain_set_peek_pointer_to_block_nosafety(packet->request_chain.hash);
+    res = giveme_blockchain_set_peek_pointer_to_block_with_previous_hash_nosafety(packet->request_chain.hash);
     if (res < 0)
     {
         // Nope we don't have the hash that the user is asking for.
