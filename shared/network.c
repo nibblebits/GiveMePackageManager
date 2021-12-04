@@ -339,19 +339,8 @@ int giveme_tcp_network_download_chain(int sockfd, struct block *last_known_block
     // Okay great we are on the same page, we can now expect a series of blocks up to end hash
     char end_hash[SHA256_STRING_LENGTH];
     strncpy(end_hash, tcp_packet.block_transfer.end_hash, sizeof(end_hash));
-    res = giveme_blockchain_add_block_nosafety(&tcp_packet.block.block);
-    if (res < 0)
-    {
-        giveme_log("%s failed to add block to blockchain\n", __FUNCTION__);
-        goto out;
-    }
 
-    if (S_EQ(tcp_packet.block.block.hash, end_hash))
-    {
-        // We are at the end of the transfer? Chao chao
-        goto out;
-    }
-    // We got more?
+    // Now we get the blocks
     do
     {
         res = giveme_tcp_recv_packet(sockfd, &tcp_packet);
