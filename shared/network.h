@@ -19,10 +19,6 @@ struct network
 {
     // IP Addresses on the network vector of struct in_addr
     struct vector *ip_addresses;
-
-    // Contains our public IP Address. to begin with this will equal 127.0.0.1 until
-    // someone tells us who we are. We can't issue certain packets when our IP is 127.0.0.1 
-    char my_ip[GIVEME_IP_STRING_SIZE];
 };
 
 enum

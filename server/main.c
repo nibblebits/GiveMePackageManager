@@ -31,7 +31,6 @@ void initialize()
 	}
 
 	giveme_blockchain_initialize();
-	giveme_blockchain_load();
 	giveme_network_initialize();
 }
 
