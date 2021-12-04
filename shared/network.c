@@ -107,7 +107,7 @@ int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out)
     }
 
     int _true = 1;
-    if(setsockopt(s,SOL_SOCKET,SO_REUSEADDR,&_true,sizeof(int)) < 0)
+    if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &_true, sizeof(int)) < 0)
     {
         giveme_log("Failed to set socket reusable option\n");
         return -1;
@@ -159,7 +159,7 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
     while (amount_left != 0)
     {
         int res = send(client, ptr, amount, 0);
-        if (res < 0)
+        if (res <= 0)
         {
             return res;
         }
@@ -174,7 +174,7 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
     while (amount_left != 0)
     {
         int res = recv(client, ptr, amount, 0);
-        if (res < 0)
+        if (res <= 0)
         {
             return res;
         }
@@ -287,7 +287,6 @@ int giveme_tcp_network_upload_chain(int sockfd, const char *prev_hash)
         goto out;
     }
 
-
     // Clear the tcp packet as we will reuse it
     bzero(&tcp_packet, sizeof(tcp_packet));
     struct block *current_block = giveme_blockchain_peek_nosafety();
@@ -340,7 +339,19 @@ int giveme_tcp_network_download_chain(int sockfd, struct block *last_known_block
     // Okay great we are on the same page, we can now expect a series of blocks up to end hash
     char end_hash[SHA256_STRING_LENGTH];
     strncpy(end_hash, tcp_packet.block_transfer.end_hash, sizeof(end_hash));
+    res = giveme_blockchain_add_block_nosafety(&tcp_packet.block.block);
+    if (res < 0)
+    {
+        giveme_log("%s failed to add block to blockchain\n", __FUNCTION__);
+        goto out;
+    }
 
+    if (S_EQ(tcp_packet.block.block.hash, end_hash))
+    {
+        // We are at the end of the transfer? Chao chao
+        goto out;
+    }
+    // We got more?
     do
     {
         res = giveme_tcp_recv_packet(sockfd, &tcp_packet);
