@@ -360,7 +360,12 @@ int giveme_tcp_network_download_chain(int sockfd, struct block *last_known_block
         goto out;
     }
 
-    if(!S_EQ(tcp_packet.block.block.hash, last_known_block->hash))
+    char blank_hash[SHA256_STRING_LENGTH] = {};
+
+    // If we don't know about any blocks yet then obviously its not going to match up when we check
+    // the first block hash.
+    if(!S_EQ(last_known_block->hash, blank_hash) && 
+        !S_EQ(tcp_packet.block.block.hash, last_known_block->hash))
     {
         giveme_log("%s expecting first block in transfer to be the block we said we was at but %s was provided\n", __FUNCTION__, tcp_packet.block.block.hash);
         res = GIVEME_RECV_PACKET_UNEXPECTED;
