@@ -37,6 +37,13 @@ void giveme_unlock_chain()
 
 off_t giveme_blockchain_index_for_block(const char *hash)
 {
+    struct block blank_block = {};
+    // First block requested? then return 0
+    if (hash == NULL || (memcmp(&blank_block, hash, sizeof(blank_block)) == 0))
+    {
+        return 0;
+    }
+
     for (int i = blockchain.total - 1; i >= 0; i--)
     {
         if (S_EQ(blockchain.block[i].hash, hash))
