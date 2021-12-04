@@ -132,6 +132,8 @@ bool giveme_mined_nosafety(struct block *block)
 
 struct block *giveme_blockchain_back_nosafety()
 {
+    if (blockchain.total <= 0)
+        return NULL;
     struct block *block = NULL;
     block = &blockchain.block[blockchain.total - 1];
     return block;
