@@ -155,32 +155,34 @@ int giveme_tcp_network_accept(int sock, struct sockaddr_in *client_out)
 
 int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
 {
+    int res = 0;
     size_t amount_left = amount;
     while (amount_left != 0)
     {
-        int res = send(client, ptr, amount, 0);
+        res = send(client, ptr, amount, 0);
         if (res <= 0)
         {
             return res;
         }
         amount_left -= res;
     }
-    return 0;
+    return res;
 }
 
 int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
 {
+    int res = 0;
     size_t amount_left = amount;
     while (amount_left != 0)
     {
-        int res = recv(client, ptr, amount, 0);
+        res = recv(client, ptr, amount, 0);
         if (res <= 0)
         {
             return res;
         }
         amount_left -= res;
     }
-    return 0;
+    return res;
 }
 
 int giveme_tcp_send_packet(int client, struct giveme_tcp_packet *packet)
