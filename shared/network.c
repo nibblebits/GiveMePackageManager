@@ -262,8 +262,6 @@ void giveme_network_block_send(struct block *block)
 int giveme_tcp_network_upload_chain(int sockfd, const char *prev_hash)
 {
     int res = 0;
-    giveme_blockchain_set_peek_forwards_nosafety();
-
     struct block *last_block = giveme_blockchain_back_nosafety();
     if (!last_block)
     {
