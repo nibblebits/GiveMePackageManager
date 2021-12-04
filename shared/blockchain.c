@@ -223,7 +223,7 @@ int giveme_blockchain_add_block_nosafety(struct block *block)
 
     vector_push(memory_blockchain, block);
 
-    giveme_log("%s Block added, total blocks %i\n", vector_count(memory_blockchain));
+    giveme_log("%s Block added, total blocks %i\n", __FUNCTION__, vector_count(memory_blockchain));
     return res;
 }
 
