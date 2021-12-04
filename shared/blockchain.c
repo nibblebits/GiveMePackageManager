@@ -223,7 +223,7 @@ int giveme_blockchain_add_block_nosafety(struct block *block)
 
     vector_push(memory_blockchain, block);
 
-    giveme_log("%s Block added, total blocks %i\n", __FUNCTION__, vector_count(memory_blockchain));
+    giveme_log("%s Block added %s prev=%s, total blocks %i\n", __FUNCTION__, block->hash, block->data.prev_hash, vector_count(memory_blockchain));
     return res;
 }
 
@@ -244,7 +244,7 @@ int giveme_mine(struct block *block)
         sha256_data(&block->data, block->hash, sizeof(block->data));
     } while (!giveme_mined_nosafety(block));
 
-    giveme_log("Mined a block %s\n", block->hash);
+    giveme_log("Mined a block %s previous block %s\n", block->hash, previous_block->hash);
     // We mined a block? Then add it to the blockchain and tell everyone else about it
     int res = giveme_blockchain_add_block_nosafety(block);
     if (res < 0)
