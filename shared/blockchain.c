@@ -79,7 +79,7 @@ struct block *giveme_blockchain_crawl_next(int flags)
         return NULL;
     }
 
-    if (blockchain.crawl.pos >= blockchain.total || blockchain.crawl.pos <= 0)
+    if (blockchain.crawl.pos >= blockchain.total || blockchain.crawl.pos < 0)
     {
         return NULL;
     }

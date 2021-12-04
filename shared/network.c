@@ -349,7 +349,7 @@ int giveme_tcp_network_download_chain(int sockfd, struct block *last_known_block
     res = giveme_tcp_recv_packet(sockfd, &tcp_packet);
     if (res < 0)
     {
-        giveme_log("%s Issue receving TCP packet", __FUNCTION__);
+        giveme_log("%s Issue receving TCP packet\n", __FUNCTION__);
         goto out;
     }
 
