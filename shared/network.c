@@ -404,7 +404,6 @@ out:
 
 void giveme_network_request_blockchain()
 {
-    return;
     giveme_lock_chain();
 
     struct sockaddr_in tcp_sock;
