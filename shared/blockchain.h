@@ -38,6 +38,7 @@ struct block *giveme_blockchain_back_nosafety();
 
 void giveme_lock_chain();
 void giveme_unlock_chain();
+void giveme_blockchain_set_peek_forwards_nosafety();
 void giveme_blockchain_reset_peek_pointer_nosafety();
 struct block *giveme_blockchain_peek_nosafety();
 int giveme_block_verify_nosafety(struct block* block);

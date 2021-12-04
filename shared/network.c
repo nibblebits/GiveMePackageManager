@@ -262,6 +262,8 @@ void giveme_network_block_send(struct block *block)
 int giveme_tcp_network_upload_chain(int sockfd, const char *prev_hash)
 {
     int res = 0;
+    giveme_blockchain_set_peek_forwards_nosafety();
+
     struct block *last_block = giveme_blockchain_back_nosafety();
     if (!last_block)
     {
@@ -353,6 +355,7 @@ int giveme_tcp_network_download_chain(int sockfd, struct block *last_known_block
         if (tcp_packet.type != GIVEME_TCP_PACKET_TYPE_BLOCK)
         {
             giveme_log("%s peer issued the wrong packet to us, we expected a block packet\n", __FUNCTION__);
+            res = -1;
             break;
         }
 
