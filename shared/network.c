@@ -195,9 +195,6 @@ int giveme_tcp_recv_packet(int client, struct giveme_tcp_packet *packet)
 
 void giveme_udp_network_announce()
 {
-    // Disabled for now
-    return;
-
     int res = 0;
     struct sockaddr_in tcp_sock;
     // We want someone to connect to us now once we send that packet
