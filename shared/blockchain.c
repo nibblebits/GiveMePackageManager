@@ -86,7 +86,7 @@ int giveme_blockchain_set_peek_pointer_to_block_nosafety(const char* hash)
     giveme_blockchain_set_peek_backwards_nosafety();
 
     struct block* block = giveme_blockchain_peek_nosafety();
-    int i = -1;
+    int i = 0;
     bool found_block = false;
     while(block)
     {
@@ -112,7 +112,7 @@ int giveme_blockchain_set_peek_pointer_to_block_with_previous_hash_nosafety(cons
     giveme_blockchain_set_peek_backwards_nosafety();
 
     struct block* block = giveme_blockchain_peek_nosafety();
-    int i = -1;
+    int i = 0;
     bool found_block = false;
     while(block)
     {
