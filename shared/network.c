@@ -697,8 +697,8 @@ int giveme_udp_network_listen_thread(struct queued_work *work)
 
     // We want to send our blockchain count frequently
     time_t last_send_of_block_count = time(NULL);
-    // Every five to 60 seconds we will send our last block count
-    int interval_to_send_block_count = (rand() % 60000) + 5000;
+    // Every five to 65 seconds we will send our last block count
+    int interval_to_send_block_count = (rand() % 60) + 5;
     while (1)
     {
         struct giveme_udp_packet packet;
@@ -718,6 +718,7 @@ int giveme_udp_network_listen_thread(struct queued_work *work)
         {
             giveme_log("test\n");
             giveme_udp_network_send_my_block_count();
+            last_send_of_block_count = time(NULL);
         }
     }
     close(s);
