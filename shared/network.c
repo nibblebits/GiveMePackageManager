@@ -849,6 +849,12 @@ void giveme_network_load_ips()
         giveme_log("inet_aton() failed\n");
     }
     giveme_network_ip_address_add(addr);
+
+    if (inet_aton("198.199.83.208", &addr) == 0)
+    {
+        giveme_log("inet_aton() failed\n");
+    }
+    giveme_network_ip_address_add(addr);
 }
 
 void giveme_network_initialize()
