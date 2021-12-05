@@ -18,6 +18,8 @@
 
 struct network network;
 
+int giveme_tcp_network_upload_chain(int sockfd, const char *hash);
+
 bool giveme_network_ip_address_exists(struct in_addr *addr)
 {
     vector_set_peek_pointer(network.ip_addresses, 0);
@@ -195,6 +197,103 @@ int giveme_tcp_recv_packet(int client, struct giveme_tcp_packet *packet)
     return giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_tcp_packet)) > 0 ? 0 : -1;
 }
 
+int giveme_tcp_network_send_unknown_entity(int sockfd)
+{
+    struct giveme_tcp_packet packet = {};
+    packet.type = GIVEME_TCP_PACKET_TYPE_UNKNOWN_ENTITY;
+    return giveme_tcp_send_packet(sockfd, &packet);
+}
+
+int giveme_tcp_network_block_count_exchange_upload(int sockfd)
+{
+    int res = 0;
+    // We should send our total block count to this guy
+    struct giveme_tcp_packet packet = {};
+    packet.type = GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE;
+    packet.block_count_exchange.count = giveme_blockchain_block_count();
+    res = giveme_tcp_send_packet(sockfd, &packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to send GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE packet\n", __FUNCTION__);
+        goto out;
+    }
+
+    while (1)
+    {
+        res = giveme_tcp_recv_packet(sockfd, &packet);
+        if (res < 0)
+        {
+            giveme_log("%s failed to receive packet\n", __FUNCTION__);
+            goto out;
+        }
+        if (packet.type != GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE_AGREEABLE_BLOCK)
+        {
+            giveme_log("%s expecting a GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE_AGREEABLE_BLOCK packet, something else was provided\n", __FUNCTION__);
+            goto out;
+        }
+
+        // The client has given us a hash we might know of, lets see if we know it.
+        struct block *block = giveme_blockchain_block(packet.agreeable_block.hash);
+        if (block && S_EQ(block->data.prev_hash, packet.agreeable_block.prev_hash))
+        {
+            // We know this block that they have asked about. We are in agreement
+            packet.type = GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE_AGREED_ON_BLOCK;
+            strncpy(packet.agreed_block.hash, block->hash, sizeof(packet.agreed_block.hash));
+            res = giveme_tcp_send_packet(sockfd, &packet);
+            if (res < 0)
+            {
+                giveme_log("%s failed to send agreed block\n", __FUNCTION__);
+                goto out;
+            }
+            // Upload the blockchain
+            res = giveme_tcp_network_upload_chain(sockfd, block->hash);
+            if (res < 0)
+            {
+                giveme_log("%s failed to upload blockchain to recipient node\n", __FUNCTION__);
+                goto out;
+            }
+
+            giveme_log("%s sent longest blockchain successfully\n", __FUNCTION__);
+        }
+        else
+        {
+            res = giveme_tcp_network_send_unknown_entity(sockfd);
+            if (res < 0)
+            {
+                giveme_log("%s failed to send unknown entity packet\n", __FUNCTION__);
+                goto out;
+            }
+        }
+    }
+out:
+    return res;
+}
+void giveme_udp_network_send_my_block_count()
+{
+    giveme_lock_chain();
+    struct sockaddr_in tcp_sock;
+    // We want someone to connect to us so we can send our blockchain if needed
+    int sock = giveme_tcp_network_listen(&tcp_sock);
+    if (sock < 0)
+    {
+        giveme_log("%s Sending block count failed, could not start TCP server\n", __FUNCTION__);
+        goto out;
+    }
+
+    struct giveme_udp_packet packet;
+    packet.type = GIVEME_UDP_PACKET_TYPE_CHAIN_BLOCK_COUNT;
+    packet.block_count.total = giveme_blockchain_block_count();
+    giveme_udp_broadcast(&packet);
+
+    struct sockaddr_in client;
+    int client_s = giveme_tcp_network_accept(sock, &client);
+    if (giveme_tcp_network_block_count_exchange_upload(client_s) < 0)
+    {
+        giveme_log("%s Issue uploading block count and exchanging blockchains\n", __FUNCTION__);
+    }
+out:
+    giveme_unlock_chain();
+}
 void giveme_udp_network_announce()
 {
     int res = 0;
@@ -261,7 +360,7 @@ void giveme_network_block_send(struct block *block)
 int giveme_tcp_network_upload_chain(int sockfd, const char *hash)
 {
     int res = 0;
-    struct block *last_block = giveme_blockchain_back_nosafety();
+    struct block *last_block = giveme_blockchain_back();
     if (!last_block)
     {
         giveme_log("%s we have no blocks on our chain to upload\n", __FUNCTION__);
@@ -311,7 +410,7 @@ out:
     return res;
 }
 
-int giveme_tcp_network_download_chain(int sockfd, struct block *last_known_block)
+int giveme_tcp_network_download_chain(struct blockchain* chain, int sockfd, struct block *last_known_block, int flags)
 {
     int res = 0;
     struct giveme_tcp_packet tcp_packet;
@@ -345,7 +444,7 @@ int giveme_tcp_network_download_chain(int sockfd, struct block *last_known_block
     char end_hash[SHA256_STRING_LENGTH];
     strncpy(end_hash, tcp_packet.block_transfer.end_hash, sizeof(end_hash));
 
-    if (last_known_block)
+    if (flags & GIVEME_DOWNLOAD_CHAIN_FLAG_IGNORE_FIRST_BLOCK && last_known_block)
     {
         // First block should be our last block and can be ignored
         res = giveme_tcp_recv_packet(sockfd, &tcp_packet);
@@ -391,7 +490,7 @@ int giveme_tcp_network_download_chain(int sockfd, struct block *last_known_block
         }
 
         // Let's add the block to our chain
-        res = giveme_blockchain_add_block_nosafety(&tcp_packet.block.block);
+        res = giveme_blockchain_add_block_for_chain(chain, &tcp_packet.block.block);
         if (res < 0)
         {
             giveme_log("%s failed to add block to blockchain\n", __FUNCTION__);
@@ -423,7 +522,7 @@ void giveme_network_request_blockchain()
         goto out;
     }
     giveme_log("%s started TCP server to await blockchain\n", __FUNCTION__);
-    struct block *top_block = giveme_blockchain_back_nosafety();
+    struct block *top_block = giveme_blockchain_back();
     struct giveme_udp_packet packet = {};
     packet.type = GIVEME_UDP_PACKET_TYPE_REQUEST_CHAIN;
     if (top_block)
@@ -445,7 +544,7 @@ void giveme_network_request_blockchain()
     }
 
     printf("%s accepted client, downloading blockchain\n", __FUNCTION__);
-    int res = giveme_tcp_network_download_chain(sock_cli, top_block);
+    int res = giveme_tcp_network_download_chain(giveme_blockchain_master(), sock_cli, top_block, GIVEME_DOWNLOAD_CHAIN_FLAG_IGNORE_FIRST_BLOCK);
     if (res < 0)
     {
         giveme_log("%s failed to download blockchain\n", __FUNCTION__);
@@ -512,7 +611,7 @@ int giveme_udp_network_handle_block(struct giveme_udp_packet *packet, struct in_
 {
     giveme_lock_chain();
     giveme_log("%s Received a new network block will try to add it to the chain\n", __FUNCTION__);
-    int res = giveme_blockchain_add_block_nosafety(&packet->block.block);
+    int res = giveme_blockchain_add_block(&packet->block.block);
     if (res == GIVEME_BLOCKCHAIN_BLOCK_VALID)
     {
         giveme_log("%s The block was valid and added to our chain, broadcasting to others\n", __FUNCTION__);
@@ -596,6 +695,10 @@ int giveme_udp_network_listen_thread(struct queued_work *work)
     int slen = sizeof(si_other);
     int recv_len = 0;
 
+    // We want to send our blockchain count frequently
+    time_t last_send_of_block_count = time(NULL);
+    // Every five to 60 seconds we will send our last block count
+    int interval_to_send_block_count = (rand() % 60000) + 5000;
     while (1)
     {
         struct giveme_udp_packet packet;
@@ -611,6 +714,11 @@ int giveme_udp_network_listen_thread(struct queued_work *work)
         // Let's add this IP address who knows about us to our IP list
         giveme_network_ip_address_add(si_other.sin_addr);
         giveme_udp_network_handle_packet(&packet, &si_other.sin_addr);
+        if (time(NULL) - last_send_of_block_count > interval_to_send_block_count)
+        {
+            giveme_log("test\n");
+            giveme_udp_network_send_my_block_count();
+        }
     }
     close(s);
 }

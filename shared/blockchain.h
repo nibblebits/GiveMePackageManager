@@ -63,20 +63,32 @@ struct block
  * 
  * @return struct block* 
  */
-struct block *giveme_blockchain_back();
-struct block *giveme_blockchain_back_nosafety() NO_THREAD_SAFETY;
+struct block *giveme_blockchain_back_safe();
+struct block *giveme_blockchain_back() NO_THREAD_SAFETY;
 
 void giveme_lock_chain();
 void giveme_unlock_chain();
-int giveme_block_verify_nosafety(struct block *block) NO_THREAD_SAFETY;
-int giveme_blockchain_add_block_nosafety(struct block *block) NO_THREAD_SAFETY;
-off_t giveme_blockchain_index_for_block(const char *hash);
+int giveme_block_verify(struct block *block) NO_THREAD_SAFETY;
+int giveme_block_verify_for_chain(struct blockchain* chain, struct block *block) NO_THREAD_SAFETY;
+int giveme_blockchain_add_block(struct block *block) NO_THREAD_SAFETY;
+off_t giveme_blockchain_index_for_block(const char *hash) NO_THREAD_SAFETY;
+struct block* giveme_blockchain_block(const char* hash);
 
-void giveme_blockchain_initialize();
-void giveme_blockchain_load();
+size_t giveme_blockchain_block_count_for_chain(struct blockchain* chain) NO_THREAD_SAFETY;
+size_t giveme_blockchain_block_count() NO_THREAD_SAFETY;
 
-int giveme_blockchain_begin_crawl(const char *start_hash, const char *end_hash);
-struct block *giveme_blockchain_crawl_next(int flags);
-int giveme_mine(struct block *block);
+void giveme_blockchain_initialize() NO_THREAD_SAFETY;
+void giveme_blockchain_load() NO_THREAD_SAFETY;
+
+int giveme_blockchain_begin_crawl(const char *start_hash, const char *end_hash) NO_THREAD_SAFETY;
+struct block *giveme_blockchain_crawl_next(int flags) NO_THREAD_SAFETY;
+int giveme_mine(struct block *block) USES_LOCKS;
+
+struct blockchain* giveme_blockchain_create(size_t total_blocks) NO_THREAD_SAFETY;
+void giveme_blockchain_free(struct blockchain* chain) NO_THREAD_SAFETY;
+struct blockchain* giveme_blockchain_master();
+int giveme_blockchain_add_block_for_chain(struct blockchain* chain, struct block *block);
+
+
 
 #endif

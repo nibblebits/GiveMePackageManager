@@ -15,6 +15,11 @@
 #define GIVEME_RECV_PACKET_UNEXPECTED -1
 #define GIVEME_RECV_PACKET_WRONG_CHAIN -2
 
+enum
+{
+    GIVEME_DOWNLOAD_CHAIN_FLAG_IGNORE_FIRST_BLOCK = 0b00000001
+};
+
 struct network
 {
     // IP Addresses on the network vector of struct in_addr
@@ -27,6 +32,7 @@ enum
     GIVEME_UDP_PACKET_TYPE_BLOCK,
     GIVEME_UDP_PACKET_TYPE_PUBLISH_PACKAGE,
     GIVEME_UDP_PACKET_TYPE_REQUEST_CHAIN,
+    GIVEME_UDP_PACKET_TYPE_CHAIN_BLOCK_COUNT
 };
 struct giveme_udp_packet
 {
@@ -35,7 +41,7 @@ struct giveme_udp_packet
     {
         struct giveme_udp_packet_hello
         {
-            
+
         } hello;
 
         struct giveme_udp_packet_publish_package
@@ -54,6 +60,13 @@ struct giveme_udp_packet
             // The last block hash the sender of this packet was aware of.
             char hash[SHA256_STRING_LENGTH];
         } request_chain;
+
+        // This packet is sent to specify how many blocks you have on your chain
+        // people whos counts are less will connect to you
+        struct giveme_udp_packet_chain_block_count
+        {
+            size_t total;
+        } block_count;
     };
 };
 
@@ -61,16 +74,21 @@ enum
 {
     GIVEME_TCP_PACKET_TYPE_HELLO,
     GIVEME_TCP_PACKET_TYPE_BLOCK,
-    GIVEME_TCP_PACKET_TYPE_BLOCK_TRANSFER
+    GIVEME_TCP_PACKET_TYPE_BLOCK_TRANSFER,
+    GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE,
+    GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE_AGREEABLE_BLOCK,
+    // Returned when the client requested something we dont understand
+    GIVEME_TCP_PACKET_TYPE_UNKNOWN_ENTITY,
+    GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE_AGREED_ON_BLOCK
 };
 struct giveme_tcp_packet
 {
     int type;
-    union 
+    union
     {
         struct giveme_tcp_hello_packet
         {
-       
+
         } hello;
 
         struct giveme_tcp_block_packet
@@ -85,6 +103,34 @@ struct giveme_tcp_packet
             // The last block hash that will be sent in the block transfer
             char end_hash[SHA256_STRING_LENGTH];
         } block_transfer;
+
+        struct giveme_tcp_block_count_exchange
+        {
+            size_t count;
+        } block_count_exchange;
+
+        /**
+         * @brief Used for two nodes to figure out which part of the chain is relateable to them.
+         * 
+         */
+        struct giveme_tcp_block_count_exchange_agreeable_block
+        {
+            // The hash of a block
+            char hash[SHA256_STRING_LENGTH];
+            // The previous hash of a block
+            char prev_hash[SHA256_STRING_LENGTH];
+        } agreeable_block;
+
+        /**
+         * @brief Used for two nodes to agree on a particular block when theirs chain disagreements
+         * 
+         */
+        struct giveme_tcp_block_count_exchange_agreed_block
+        {
+            // The hash of the block
+            char hash[SHA256_STRING_LENGTH];
+
+        } agreed_block;
     };
 };
 
@@ -115,7 +161,7 @@ int giveme_udp_network_send(struct in_addr addr, struct giveme_udp_packet *packe
  * 
  * @param block 
  */
-void giveme_network_block_send(struct block* block);
+void giveme_network_block_send(struct block *block);
 
 /**
  * @brief Requests an updated blockchain

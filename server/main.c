@@ -22,11 +22,13 @@ void initialize()
     srand((time_t)ts.tv_nsec);
 
 	char data_directory[PATH_MAX];
-	sprintf(data_directory, "%s/%s/packages", getenv("HOME"), ".giveme");
+	sprintf(data_directory, "%s/%s", getenv("HOME"), ".giveme");
 	DIR* dir = opendir(data_directory);
 	if(!dir)
 	{
 		// First time setup
+		mkdir(data_directory, 0775);
+		sprintf(data_directory, "%s/%s/packages", getenv("HOME"), ".giveme");
 		mkdir(data_directory, 0775);
 	}
 
