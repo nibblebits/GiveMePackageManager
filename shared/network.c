@@ -490,8 +490,8 @@ int giveme_process_thread(struct queued_work *work)
 {
     // We want to send our blockchain count frequently
     time_t last_sync = time(NULL);
-    // Every five to 65 seconds we will send our last block count
-    int interval_to_sync = (rand() % 60) + 5;
+    // Every 120 seconds to 240 seconds  we will send our last block count
+    int interval_to_sync = (rand() % 60) + 240;
 
     while (1)
     {
