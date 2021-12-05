@@ -65,12 +65,16 @@ struct blockchain* giveme_blockchain_master()
     return &blockchain;
 }
 
-struct block* giveme_blockchain_block(const char* hash)
+struct block* giveme_blockchain_block(const char* hash, size_t* blocks_left_to_end)
 {
     off_t index = giveme_blockchain_index_for_block(hash);
     if (index < 0)
         return NULL;
     
+    if (blocks_left_to_end)
+    {
+        *blocks_left_to_end = blockchain.total - index+1;
+    }
     return &blockchain.block[index];
 }
 

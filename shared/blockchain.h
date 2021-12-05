@@ -72,7 +72,7 @@ int giveme_block_verify(struct block *block) NO_THREAD_SAFETY;
 int giveme_block_verify_for_chain(struct blockchain* chain, struct block *block) NO_THREAD_SAFETY;
 int giveme_blockchain_add_block(struct block *block) NO_THREAD_SAFETY;
 off_t giveme_blockchain_index_for_block(const char *hash) NO_THREAD_SAFETY;
-struct block* giveme_blockchain_block(const char* hash);
+struct block* giveme_blockchain_block(const char* hash, size_t* blocks_left_to_end);
 
 size_t giveme_blockchain_block_count_for_chain(struct blockchain* chain) NO_THREAD_SAFETY;
 size_t giveme_blockchain_block_count() NO_THREAD_SAFETY;

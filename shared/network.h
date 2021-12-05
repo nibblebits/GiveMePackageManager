@@ -129,6 +129,8 @@ struct giveme_tcp_packet
         {
             // The hash of the block
             char hash[SHA256_STRING_LENGTH];
+            // The total number of blocks to the end of the chain from the block represented by the hash
+            size_t total_blocks_to_end;
 
         } agreed_block;
     };

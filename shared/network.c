@@ -19,6 +19,8 @@
 struct network network;
 
 int giveme_tcp_network_upload_chain(int sockfd, const char *hash);
+int giveme_tcp_network_download_chain(struct blockchain* chain, int sockfd, struct block *last_known_block, int flags);
+void giveme_udp_broadcast_no_localhost(struct giveme_udp_packet *packet);
 
 bool giveme_network_ip_address_exists(struct in_addr *addr)
 {
@@ -233,12 +235,14 @@ int giveme_tcp_network_block_count_exchange_upload(int sockfd)
         }
 
         // The client has given us a hash we might know of, lets see if we know it.
-        struct block *block = giveme_blockchain_block(packet.agreeable_block.hash);
+        size_t blocks_to_end = 0;
+        struct block *block = giveme_blockchain_block(packet.agreeable_block.hash, &blocks_to_end);
         if (block && S_EQ(block->data.prev_hash, packet.agreeable_block.prev_hash))
         {
             // We know this block that they have asked about. We are in agreement
             packet.type = GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE_AGREED_ON_BLOCK;
             strncpy(packet.agreed_block.hash, block->hash, sizeof(packet.agreed_block.hash));
+            packet.agreed_block.total_blocks_to_end = blocks_to_end;
             res = giveme_tcp_send_packet(sockfd, &packet);
             if (res < 0)
             {
@@ -268,9 +272,102 @@ int giveme_tcp_network_block_count_exchange_upload(int sockfd)
 out:
     return res;
 }
+
+int giveme_tcp_network_block_count_exchange_download(int sockfd)
+{
+    int res = 0;
+    // We should send our total block count to this guy
+    struct giveme_tcp_packet packet = {};
+    res = giveme_tcp_recv_packet(sockfd, &packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to receive packet\n", __FUNCTION__);
+        goto out;
+    }
+    if (packet.type != GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE)
+    {
+        giveme_log("%s expecting a type of GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE but a different packet type was provided\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+    size_t total_blocks = packet.block_count_exchange.count;
+    if (total_blocks <= giveme_blockchain_block_count())
+    {
+        // We are bigger than this guy.
+        giveme_log("%s our chain is bigger or equal in size to the node, so we refuse to update our chain to theirs\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    // Okay we must now send the client our hashes to try to find a hash we both agree on
+    giveme_blockchain_begin_crawl(NULL, NULL);
+    struct block* block = giveme_blockchain_crawl_next(BLOCKCHAIN_CRAWLER_FLAG_CRAWL_DOWN);
+    while(block)
+    {
+        struct giveme_tcp_packet packet_out;
+        packet_out.type = GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE_AGREEABLE_BLOCK;
+        strncpy(packet_out.agreeable_block.hash, block->hash, sizeof(packet_out.agreeable_block.hash));
+        strncpy(packet_out.agreeable_block.prev_hash, block->data.prev_hash, sizeof(packet_out.agreeable_block.hash));
+        res = giveme_tcp_send_packet(sockfd, &packet_out);
+        if (res < 0)
+        {
+            giveme_log("%s failed to send GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE_AGREEABLE_BLOCK packet\n", __FUNCTION__);
+            res = -1;
+            goto out;
+        }
+
+        res = giveme_tcp_recv_packet(sockfd, &packet);
+        if (res < 0)
+        {
+            giveme_log("%s failed to receive return packet\n", __FUNCTION__);
+            res = -1;
+            goto out;
+        }
+
+        if (packet.type == GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE_AGREED_ON_BLOCK)
+        {
+            if (!S_EQ(packet.agreed_block.hash, block->hash))
+            {
+                giveme_log("%s client agreed on the block but sent back an unexpected hash: %s\n", packet.agreed_block.hash);
+                res = -1;
+                goto out;
+            }
+
+            if (packet.agreed_block.total_blocks_to_end <= 0)
+            {
+                giveme_log("%s client sent that the total blocks to the end are zero. In which case the blockchains should already be equal. Or an invalid total blocks was provided\n", __FUNCTION__);
+                res = -1;
+                goto out;
+            }
+
+            giveme_log("%s client agrees on the block %s with us. Downloading chain from this point\n", __FUNCTION__, block->hash);
+            // We +1 because we will also be receving our current block that we both agreed on
+
+            struct blockchain* tmp_chain = giveme_blockchain_create(packet.agreed_block.total_blocks_to_end+1);
+            res = giveme_tcp_network_download_chain(tmp_chain, sockfd, block, 0);
+            if (res < 0)
+            {
+                giveme_log("%s failed to download blockchain\n", __FUNCTION__);
+                giveme_blockchain_free(tmp_chain);
+                goto out;
+            }
+
+            giveme_blockchain_free(tmp_chain);
+        }
+        else if(packet.type == GIVEME_TCP_PACKET_TYPE_UNKNOWN_ENTITY)
+        {
+            giveme_log("%s client is not aware of our hash %s we will try the previous block\n", __FUNCTION__, block->hash);
+        }
+        block = giveme_blockchain_crawl_next(BLOCKCHAIN_CRAWLER_FLAG_CRAWL_DOWN);
+    }
+out:
+    return res;
+}
+
 void giveme_udp_network_send_my_block_count()
 {
     giveme_lock_chain();
+    giveme_log("%s sending my block count to the network\n", __FUNCTION__);
     struct sockaddr_in tcp_sock;
     // We want someone to connect to us so we can send our blockchain if needed
     int sock = giveme_tcp_network_listen(&tcp_sock);
@@ -287,11 +384,18 @@ void giveme_udp_network_send_my_block_count()
 
     struct sockaddr_in client;
     int client_s = giveme_tcp_network_accept(sock, &client);
+    if (client_s < 0)
+    {
+        giveme_log("%s Nobody wants our blockchain right now\n", __FUNCTION__);
+        goto out;
+    }
     if (giveme_tcp_network_block_count_exchange_upload(client_s) < 0)
     {
         giveme_log("%s Issue uploading block count and exchanging blockchains\n", __FUNCTION__);
     }
 out:
+    close(client_s);
+    close(sock);
     giveme_unlock_chain();
 }
 void giveme_udp_network_announce()
@@ -533,7 +637,7 @@ void giveme_network_request_blockchain()
 
     // Broadcast our request to random clients we will also need to open a TCP port
     // for them to connect to us.
-    giveme_udp_broadcast(&packet);
+    giveme_udp_broadcast_no_localhost(&packet);
 
     struct sockaddr_in client;
     int sock_cli = giveme_tcp_network_accept(sock, &client);
@@ -716,7 +820,6 @@ int giveme_udp_network_listen_thread(struct queued_work *work)
         giveme_udp_network_handle_packet(&packet, &si_other.sin_addr);
         if (time(NULL) - last_send_of_block_count > interval_to_send_block_count)
         {
-            giveme_log("test\n");
             giveme_udp_network_send_my_block_count();
             last_send_of_block_count = time(NULL);
         }
@@ -732,7 +835,7 @@ void giveme_network_load_ips()
         giveme_log("inet_aton() failed\n");
     }
 
-    //giveme_network_ip_address_add(addr);
+    giveme_network_ip_address_add(addr);
 
     if (inet_aton("67.205.184.222", &addr) == 0)
     {
@@ -800,6 +903,23 @@ void giveme_udp_broadcast_random_no_localhost(struct giveme_udp_packet *packet, 
         giveme_udp_network_send(*addr, packet);
     }
 }
+
+void giveme_udp_broadcast_no_localhost(struct giveme_udp_packet *packet)
+{
+    vector_set_peek_pointer(network.ip_addresses, 0);
+    struct in_addr *addr = vector_peek(network.ip_addresses);
+    while (addr)
+    {
+        if (S_EQ(inet_ntoa(*addr), "127.0.0.1"))
+        {
+            addr = vector_peek(network.ip_addresses);
+            continue;
+        }
+        giveme_udp_network_send(*addr, packet);
+        addr = vector_peek(network.ip_addresses);
+    }
+}
+
 void giveme_udp_broadcast(struct giveme_udp_packet *packet)
 {
     vector_set_peek_pointer(network.ip_addresses, 0);
