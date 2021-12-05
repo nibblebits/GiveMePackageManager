@@ -73,7 +73,7 @@ struct block* giveme_blockchain_block(const char* hash, size_t* blocks_left_to_e
     
     if (blocks_left_to_end)
     {
-        *blocks_left_to_end = blockchain.total - index+1;
+        *blocks_left_to_end = giveme_blockchain_total_blocks_left(index);
     }
     return &blockchain.block[index];
 }
@@ -359,6 +359,10 @@ int giveme_blockchain_add_block_for_chain(struct blockchain* chain, struct block
     return res;
 }
 
+size_t giveme_blockchain_total_blocks_left(int index)
+{
+    return blockchain.total - (index+1);
+}
 int giveme_blockchain_add_block(struct block *block)
 {
     int res = giveme_blockchain_add_block_for_chain(&blockchain, block);

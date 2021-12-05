@@ -89,6 +89,14 @@ void giveme_blockchain_free(struct blockchain* chain) NO_THREAD_SAFETY;
 struct blockchain* giveme_blockchain_master();
 int giveme_blockchain_add_block_for_chain(struct blockchain* chain, struct block *block);
 
+/**
+ * @brief Returns how many blocks are left on the chain until we reach the latest block
+ * based on the given index provided. The index being a single block in the blockchain array
+ * 
+ * @param index 
+ * @return size_t 
+ */
+size_t giveme_blockchain_total_blocks_left(int index);
 
 
 #endif

@@ -746,6 +746,13 @@ int giveme_udp_network_handle_request_chain(struct giveme_udp_packet *packet, st
         goto out;
     }
 
+    // Do we have any further blocks ahead?
+    size_t total_blocks_to_send = giveme_blockchain_total_blocks_left(res);
+    if (total_blocks_to_send <= 0)
+    {
+        // We can't handle this as our chains are equal
+        goto out;
+    }
     int sockfd = giveme_tcp_network_connect(*from_address);
     if (sockfd < 0)
     {
