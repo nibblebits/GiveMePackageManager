@@ -41,10 +41,12 @@ int main(int argc, char *argv[])
 	initialize();
 	giveme_thread_pool_init(GIVEME_TOTAL_THREADS);
 	giveme_thread_pool_start();
-
-	giveme_udp_network_listen();
+	
 	giveme_udp_network_announce();
-	giveme_network_request_blockchain();
+	giveme_network_request_blockchain_try(GIVEME_MAX_BLOCKCHAIN_REQUESTS_IF_FAILED);
+	giveme_process_thread_start();
+	giveme_udp_network_listen();
+
 	giveme_af_unix_listen();
 
 	return 0;

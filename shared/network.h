@@ -6,6 +6,7 @@
 #include <sys/un.h>
 #include <stdio.h>
 #include <string.h>
+#include <pthread.h>
 #include "config.h"
 #include "blockchain.h"
 #define GIVEME_UDP_PORT 9987
@@ -27,6 +28,12 @@ struct network
 
     // Vector of IP addresses of struct in_addr that should not be broadcast too for the next broadcast
     struct vector* ignore_broadcast_ips;
+
+    // Vector of giveme_udp_queued_packet, these are packets that are queued for processing
+    // recently received from the network.
+    struct vector* queued_udp_packets;
+    pthread_mutex_t queued_udp_packets_lock;
+
 };
 
 enum
@@ -37,6 +44,8 @@ enum
     GIVEME_UDP_PACKET_TYPE_REQUEST_CHAIN,
     GIVEME_UDP_PACKET_TYPE_CHAIN_BLOCK_COUNT
 };
+
+
 struct giveme_udp_packet
 {
     int type;
@@ -71,6 +80,12 @@ struct giveme_udp_packet
             size_t total;
         } block_count;
     };
+};
+
+struct giveme_queued_udp_packet
+{
+    struct in_addr addr;
+    struct giveme_udp_packet packet;
 };
 
 enum
@@ -141,6 +156,7 @@ struct giveme_tcp_packet
 
 void giveme_network_initialize();
 int giveme_udp_network_listen();
+int giveme_process_thread_start();
 
 /**
  * @brief Announces ourself to the entire network that we are aware of
@@ -172,6 +188,7 @@ void giveme_network_block_send(struct block *block);
  * @brief Requests an updated blockchain
  * 
  */
-void giveme_network_request_blockchain();
+int giveme_network_request_blockchain();
+int giveme_network_request_blockchain_try(size_t tries);
 
 #endif

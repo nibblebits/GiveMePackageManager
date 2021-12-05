@@ -19,8 +19,9 @@
 struct network network;
 
 int giveme_tcp_network_upload_chain(int sockfd, const char *hash);
-int giveme_tcp_network_download_chain(struct blockchain* chain, int sockfd, struct block *last_known_block, int flags);
+int giveme_tcp_network_download_chain(struct blockchain *chain, int sockfd, struct block *last_known_block, int flags);
 void giveme_udp_broadcast_no_localhost(struct giveme_udp_packet *packet);
+int giveme_udp_network_handle_packet(struct giveme_udp_packet *packet, struct in_addr *from_address);
 
 bool giveme_network_ip_address_exists(struct in_addr *addr)
 {
@@ -327,8 +328,8 @@ int giveme_tcp_network_block_count_exchange_download(int sockfd)
 
     // Okay we must now send the client our hashes to try to find a hash we both agree on
     giveme_blockchain_begin_crawl(NULL, NULL);
-    struct block* block = giveme_blockchain_crawl_next(BLOCKCHAIN_CRAWLER_FLAG_CRAWL_DOWN);
-    while(block)
+    struct block *block = giveme_blockchain_crawl_next(BLOCKCHAIN_CRAWLER_FLAG_CRAWL_DOWN);
+    while (block)
     {
         struct giveme_tcp_packet packet_out;
         packet_out.type = GIVEME_TCP_PACKET_TYPE_BLOCK_COUNT_EXCHANGE_AGREEABLE_BLOCK;
@@ -369,7 +370,7 @@ int giveme_tcp_network_block_count_exchange_download(int sockfd)
             giveme_log("%s client agrees on the block %s with us. Downloading chain from this point\n", __FUNCTION__, block->hash);
             // We +1 because we will also be receving our current block that we both agreed on
 
-            struct blockchain* tmp_chain = giveme_blockchain_create(packet.agreed_block.total_blocks_to_end+1);
+            struct blockchain *tmp_chain = giveme_blockchain_create(packet.agreed_block.total_blocks_to_end + 1);
             res = giveme_tcp_network_download_chain(tmp_chain, sockfd, block, 0);
             if (res < 0)
             {
@@ -380,7 +381,7 @@ int giveme_tcp_network_block_count_exchange_download(int sockfd)
 
             giveme_blockchain_free(tmp_chain);
         }
-        else if(packet.type == GIVEME_TCP_PACKET_TYPE_UNKNOWN_ENTITY)
+        else if (packet.type == GIVEME_TCP_PACKET_TYPE_UNKNOWN_ENTITY)
         {
             giveme_log("%s client is not aware of our hash %s we will try the previous block\n", __FUNCTION__, block->hash);
         }
@@ -467,6 +468,43 @@ out:
     close(sock);
 }
 
+int giveme_udp_network_process_queued_packets()
+{
+    pthread_mutex_lock(&network.queued_udp_packets_lock);
+    vector_set_peek_pointer_end(network.queued_udp_packets);
+    vector_set_flag(network.queued_udp_packets, VECTOR_FLAG_PEEK_DECREMENT);
+
+    struct giveme_queued_udp_packet *packet = vector_peek(network.queued_udp_packets);
+    while (packet)
+    {
+        giveme_udp_network_handle_packet(&packet->packet, &packet->addr);
+        packet = vector_peek(network.queued_udp_packets);
+    }
+
+    vector_clear(network.queued_udp_packets);
+    pthread_mutex_unlock(&network.queued_udp_packets_lock);
+    return 0;
+}
+
+int giveme_process_thread(struct queued_work *work)
+{
+    // We want to send our blockchain count frequently
+    time_t last_sync = time(NULL);
+    // Every five to 65 seconds we will send our last block count
+    int interval_to_sync = (rand() % 60) + 5;
+
+    while (1)
+    {
+        giveme_udp_network_process_queued_packets();
+        if (time(NULL) - last_sync > interval_to_sync)
+        {
+            giveme_network_request_blockchain_try(GIVEME_MAX_BLOCKCHAIN_REQUESTS_IF_FAILED);
+            giveme_udp_network_send_my_block_count();
+            last_sync = time(NULL);
+        }
+    }
+    return 0;
+}
 int giveme_network_mine_block(struct queued_work *work)
 {
     struct block *block = work->private;
@@ -540,7 +578,7 @@ out:
     return res;
 }
 
-int giveme_tcp_network_download_chain(struct blockchain* chain, int sockfd, struct block *last_known_block, int flags)
+int giveme_tcp_network_download_chain(struct blockchain *chain, int sockfd, struct block *last_known_block, int flags)
 {
     int res = 0;
     struct giveme_tcp_packet tcp_packet;
@@ -639,10 +677,10 @@ out:
     return res;
 }
 
-void giveme_network_request_blockchain()
+int giveme_network_request_blockchain()
 {
+    int res = 0;
     giveme_lock_chain();
-
     struct sockaddr_in tcp_sock;
     // We want someone to connect to us now once we send that packet
     int sock = giveme_tcp_network_listen(&tcp_sock);
@@ -670,11 +708,12 @@ void giveme_network_request_blockchain()
     if (sock_cli < 0)
     {
         giveme_log("%s failed to accept client\n", __FUNCTION__);
+        res = sock_cli;
         goto out;
     }
 
     printf("%s accepted client, downloading blockchain\n", __FUNCTION__);
-    int res = giveme_tcp_network_download_chain(giveme_blockchain_master(), sock_cli, top_block, GIVEME_DOWNLOAD_CHAIN_FLAG_IGNORE_FIRST_BLOCK);
+    res = giveme_tcp_network_download_chain(giveme_blockchain_master(), sock_cli, top_block, GIVEME_DOWNLOAD_CHAIN_FLAG_IGNORE_FIRST_BLOCK);
     if (res < 0)
     {
         giveme_log("%s failed to download blockchain\n", __FUNCTION__);
@@ -691,6 +730,23 @@ out:
 
     close(sock);
     close(sock_cli);
+    return res;
+}
+
+int giveme_network_request_blockchain_try(size_t tries)
+{
+    int res = 0;
+    // We will request the blockchain for the number of tries, once max tries are reached we will give up
+    for (size_t i = 0; i < tries; i++)
+    {
+        res = giveme_network_request_blockchain();
+        if (res == 0)
+            break;
+    }
+    // Some ip addresses may have been ignored during the request process, we can now safely ignore them
+    // from the ignore list.
+    giveme_network_clear_ignore_broadcast_list();
+    return res;
 }
 
 void giveme_udp_network_handle_packet_publish_package(struct giveme_udp_packet *packet, struct in_addr *from_address)
@@ -805,6 +861,25 @@ out:
     return res;
 }
 
+int giveme_udp_network_queue_packet(struct giveme_udp_packet *packet, struct in_addr *from_address)
+{
+    int res = 0;
+    struct giveme_queued_udp_packet queued_packet = {};
+    queued_packet.packet = *packet;
+    queued_packet.addr = *from_address;
+    pthread_mutex_lock(&network.queued_udp_packets_lock);
+    if (vector_count(network.queued_udp_packets) >= GIVEME_UDP_PACKET_QUEUE_MAXIMUM_PACKETS)
+    {
+        giveme_log("%s rejected attempt to queue packet as the packet queue is full\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+    vector_push(network.queued_udp_packets, &queued_packet);
+out:
+    pthread_mutex_unlock(&network.queued_udp_packets_lock);
+    return 0;
+}
+
 int giveme_udp_network_handle_packet(struct giveme_udp_packet *packet, struct in_addr *from_address)
 {
     switch (packet->type)
@@ -835,10 +910,6 @@ int giveme_udp_network_listen_thread(struct queued_work *work)
     int slen = sizeof(si_other);
     int recv_len = 0;
 
-    // We want to send our blockchain count frequently
-    time_t last_sync = time(NULL);
-    // Every five to 65 seconds we will send our last block count
-    int interval_to_sync = (rand() % 60) + 5;
     while (1)
     {
         struct giveme_udp_packet packet;
@@ -853,18 +924,7 @@ int giveme_udp_network_listen_thread(struct queued_work *work)
         giveme_log("Received packet from %s:%d\n", inet_ntoa(si_other.sin_addr), ntohs(si_other.sin_port));
         // Let's add this IP address who knows about us to our IP list
         giveme_network_ip_address_add(si_other.sin_addr);
-        giveme_udp_network_handle_packet(&packet, &si_other.sin_addr);
-        if (time(NULL) - last_sync > interval_to_sync)
-        {
-            // We will request the blockchain twice per cycle in case the first request fails
-            for (int i = 0; i < 2; i++)
-            {
-                giveme_network_request_blockchain();
-                giveme_network_clear_ignore_broadcast_list();
-            }
-            giveme_udp_network_send_my_block_count();
-            last_sync = time(NULL);
-        }
+        giveme_udp_network_queue_packet(&packet, &si_other.sin_addr);
     }
     close(s);
 }
@@ -897,7 +957,15 @@ void giveme_network_initialize()
     memset(&network, 0, sizeof(struct network));
     network.ip_addresses = vector_create(sizeof(struct in_addr));
     network.ignore_broadcast_ips = vector_create(sizeof(struct in_addr));
+    network.queued_udp_packets = vector_create(sizeof(struct giveme_queued_udp_packet));
+
     giveme_network_load_ips();
+}
+
+int giveme_process_thread_start()
+{
+    giveme_queue_work(giveme_process_thread, NULL);
+    return 0;
 }
 
 int giveme_udp_network_listen()
@@ -984,7 +1052,6 @@ void giveme_udp_broadcast(struct giveme_udp_packet *packet)
         giveme_udp_network_send(*addr, packet);
         addr = vector_peek(network.ip_addresses);
     }
-
 }
 
 int giveme_udp_network_send(struct in_addr addr, struct giveme_udp_packet *packet)
