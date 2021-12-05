@@ -24,6 +24,9 @@ struct network
 {
     // IP Addresses on the network vector of struct in_addr
     struct vector *ip_addresses;
+
+    // Vector of IP addresses of struct in_addr that should not be broadcast too for the next broadcast
+    struct vector* ignore_broadcast_ips;
 };
 
 enum

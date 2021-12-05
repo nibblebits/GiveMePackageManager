@@ -37,12 +37,38 @@ bool giveme_network_ip_address_exists(struct in_addr *addr)
     return false;
 }
 
+bool giveme_network_ip_address_exists_on_ignore_broadcast_list(struct in_addr *addr)
+{
+    vector_set_peek_pointer(network.ignore_broadcast_ips, 0);
+    struct in_addr *vec_addr = vector_peek(network.ignore_broadcast_ips);
+    while (vec_addr)
+    {
+        if (memcmp(vec_addr, addr, sizeof(struct in_addr)) == 0)
+            return true;
+
+        vec_addr = vector_peek(network.ignore_broadcast_ips);
+    }
+
+    return false;
+}
+
+bool giveme_network_clear_ignore_broadcast_list()
+{
+    vector_clear(network.ignore_broadcast_ips);
+    return true;
+}
+
 void giveme_network_ip_address_add(struct in_addr addr)
 {
     if (!giveme_network_ip_address_exists(&addr))
     {
         vector_push(network.ip_addresses, &addr);
     }
+}
+
+void giveme_network_ip_address_ignore(struct in_addr addr)
+{
+    vector_push(network.ignore_broadcast_ips, &addr);
 }
 
 int giveme_tcp_network_connect(struct in_addr addr)
@@ -652,6 +678,9 @@ void giveme_network_request_blockchain()
     if (res < 0)
     {
         giveme_log("%s failed to download blockchain\n", __FUNCTION__);
+        // We should ban this client for now since we don't want to poll him again when we are
+        // having transfer problems
+        giveme_network_ip_address_ignore(client.sin_addr);
         goto out;
     }
 
@@ -807,9 +836,9 @@ int giveme_udp_network_listen_thread(struct queued_work *work)
     int recv_len = 0;
 
     // We want to send our blockchain count frequently
-    time_t last_send_of_block_count = time(NULL);
+    time_t last_sync = time(NULL);
     // Every five to 65 seconds we will send our last block count
-    int interval_to_send_block_count = (rand() % 60) + 5;
+    int interval_to_sync = (rand() % 60) + 5;
     while (1)
     {
         struct giveme_udp_packet packet;
@@ -825,10 +854,16 @@ int giveme_udp_network_listen_thread(struct queued_work *work)
         // Let's add this IP address who knows about us to our IP list
         giveme_network_ip_address_add(si_other.sin_addr);
         giveme_udp_network_handle_packet(&packet, &si_other.sin_addr);
-        if (time(NULL) - last_send_of_block_count > interval_to_send_block_count)
+        if (time(NULL) - last_sync > interval_to_sync)
         {
+            // We will request the blockchain twice per cycle in case the first request fails
+            for (int i = 0; i < 2; i++)
+            {
+                giveme_network_request_blockchain();
+                giveme_network_clear_ignore_broadcast_list();
+            }
             giveme_udp_network_send_my_block_count();
-            last_send_of_block_count = time(NULL);
+            last_sync = time(NULL);
         }
     }
     close(s);
@@ -860,7 +895,8 @@ void giveme_network_load_ips()
 void giveme_network_initialize()
 {
     memset(&network, 0, sizeof(struct network));
-    network.ip_addresses = vector_create(sizeof(struct sockaddr_in));
+    network.ip_addresses = vector_create(sizeof(struct in_addr));
+    network.ignore_broadcast_ips = vector_create(sizeof(struct in_addr));
     giveme_network_load_ips();
 }
 
@@ -923,7 +959,7 @@ void giveme_udp_broadcast_no_localhost(struct giveme_udp_packet *packet)
     struct in_addr *addr = vector_peek(network.ip_addresses);
     while (addr)
     {
-        if (S_EQ(inet_ntoa(*addr), "127.0.0.1"))
+        if (S_EQ(inet_ntoa(*addr), "127.0.0.1") || giveme_network_ip_address_exists_on_ignore_broadcast_list(addr))
         {
             addr = vector_peek(network.ip_addresses);
             continue;
@@ -939,9 +975,16 @@ void giveme_udp_broadcast(struct giveme_udp_packet *packet)
     struct in_addr *addr = vector_peek(network.ip_addresses);
     while (addr)
     {
+        if (giveme_network_ip_address_exists_on_ignore_broadcast_list(addr))
+        {
+            // We should ignore this one for this cycle
+            addr = vector_peek(network.ip_addresses);
+            continue;
+        }
         giveme_udp_network_send(*addr, packet);
         addr = vector_peek(network.ip_addresses);
     }
+
 }
 
 int giveme_udp_network_send(struct in_addr addr, struct giveme_udp_packet *packet)
