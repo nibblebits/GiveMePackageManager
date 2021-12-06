@@ -1099,8 +1099,8 @@ void giveme_udp_broadcast_no_localhost(struct giveme_udp_packet *packet)
     {
         if (S_EQ(inet_ntoa(*addr), "127.0.0.1") || giveme_network_ip_address_exists_on_ignore_broadcast_list(addr))
         {
-            addr = vector_peek(network.ip_addresses);
-            continue;
+          //  addr = vector_peek(network.ip_addresses);
+           // continue;
         }
         giveme_udp_network_send(*addr, packet);
         addr = vector_peek(network.ip_addresses);
@@ -1116,8 +1116,8 @@ void giveme_udp_broadcast(struct giveme_udp_packet *packet)
         if (giveme_network_ip_address_exists_on_ignore_broadcast_list(addr))
         {
             // We should ignore this one for this cycle
-            addr = vector_peek(network.ip_addresses);
-            continue;
+       //     addr = vector_peek(network.ip_addresses);
+         //   continue;
         }
         giveme_udp_network_send(*addr, packet);
         addr = vector_peek(network.ip_addresses);
