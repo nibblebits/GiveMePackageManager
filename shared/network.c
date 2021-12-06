@@ -499,30 +499,6 @@ int giveme_udp_network_process_queued_packets()
     return 0;
 }
 
-int giveme_sync_work(struct queued_work *work)
-{
-   // giveme_network_request_blockchain_try(GIVEME_MAX_BLOCKCHAIN_REQUESTS_IF_FAILED);
-    giveme_udp_network_send_my_block_count();
-    return 0;
-}
-int giveme_process_thread(struct queued_work *work)
-{
-    // We want to send our blockchain count frequently
-    time_t last_sync = time(NULL);
-    // Every 120 seconds to 240 seconds  we will send our last block count
-    int interval_to_sync = 30;
-
-    while (1)
-    {
-        giveme_udp_network_process_queued_packets();
-        if (time(NULL) - last_sync > interval_to_sync)
-        {
-            giveme_queue_work(giveme_sync_work, NULL);
-            last_sync = time(NULL);
-        }
-    }
-    return 0;
-}
 int giveme_network_mine_block(struct queued_work *work)
 {
     struct block *block = work->private;
@@ -919,6 +895,8 @@ out:
     return res;
 }
 
+
+// No longer used for now.
 int giveme_udp_network_queue_packet(struct giveme_udp_packet *packet, struct in_addr *from_address)
 {
     int res = 0;
@@ -971,7 +949,7 @@ int giveme_udp_network_listen_thread(struct queued_work *work)
 
     int slen = sizeof(si_other);
     int recv_len = 0;
-
+    time_t last_sync_time = time(NULL);
     while (1)
     {
         struct giveme_udp_packet packet;
@@ -986,7 +964,12 @@ int giveme_udp_network_listen_thread(struct queued_work *work)
         giveme_log("Received packet from %s:%d\n", inet_ntoa(si_other.sin_addr), ntohs(si_other.sin_port));
         // Let's add this IP address who knows about us to our IP list
         giveme_network_ip_address_add(si_other.sin_addr);
-        giveme_udp_network_queue_packet(&packet, &si_other.sin_addr);
+        giveme_udp_network_handle_packet(&packet, &si_other.sin_addr);
+        if (time(NULL) - last_sync_time > 30)
+        {
+            giveme_udp_network_send_my_block_count();
+            last_sync_time = time(NULL);
+        }
     }
     close(s);
 }
@@ -1035,7 +1018,8 @@ void giveme_network_initialize()
 
 int giveme_process_thread_start()
 {
-    giveme_queue_work(giveme_process_thread, NULL);
+    // Not implemented.
+   // giveme_queue_work(giveme_process_thread, NULL);
     return 0;
 }
 
