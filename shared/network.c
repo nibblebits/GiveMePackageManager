@@ -877,6 +877,7 @@ out:
 }
 int giveme_udp_network_handle_request_chain(struct giveme_udp_packet *packet, struct in_addr *from_address)
 {
+    return 0;
     int res = 0;
     giveme_lock_chain();
     // Let's see if we are able to handle this request
