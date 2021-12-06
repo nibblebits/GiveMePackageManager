@@ -501,7 +501,7 @@ int giveme_udp_network_process_queued_packets()
 
 int giveme_sync_work(struct queued_work *work)
 {
-    giveme_network_request_blockchain_try(GIVEME_MAX_BLOCKCHAIN_REQUESTS_IF_FAILED);
+   // giveme_network_request_blockchain_try(GIVEME_MAX_BLOCKCHAIN_REQUESTS_IF_FAILED);
     giveme_udp_network_send_my_block_count();
     return 0;
 }
