@@ -477,6 +477,13 @@ int giveme_udp_network_process_queued_packets()
     struct giveme_queued_udp_packet *packet = vector_peek(network.queued_udp_packets);
     while (packet)
     {
+        if (time(NULL) - packet->created >= GIVEME_UDP_PACKET_QUEUE_PACKET_EXPIRE_SECONDS)
+        {
+            // The queued packet has expired...
+            packet = vector_peek(network.queued_udp_packets);
+            continue;
+        }
+
         giveme_udp_network_handle_packet(&packet->packet, &packet->addr);
         packet = vector_peek(network.queued_udp_packets);
     }
@@ -685,17 +692,19 @@ out:
 int giveme_network_request_blockchain()
 {
     int res = 0;
-    giveme_lock_chain();
     struct sockaddr_in tcp_sock;
     // We want someone to connect to us now once we send that packet
     int sock = giveme_tcp_network_listen(&tcp_sock);
     if (sock < 0)
     {
         giveme_log("%s failed to listen on TCP server when trying to get blockchain\n", __FUNCTION__);
-        goto out;
+        return -1;
     }
     giveme_log("%s started TCP server to await blockchain\n", __FUNCTION__);
-    struct block *top_block = giveme_blockchain_back();
+    struct block *top_block = NULL;
+    giveme_lock_chain();
+    top_block = giveme_blockchain_back();
+    giveme_unlock_chain();
     struct giveme_udp_packet packet = {};
     packet.type = GIVEME_UDP_PACKET_TYPE_REQUEST_CHAIN;
     if (top_block)
@@ -718,6 +727,7 @@ int giveme_network_request_blockchain()
     }
 
     printf("%s accepted client, downloading blockchain\n", __FUNCTION__);
+    giveme_lock_chain();
     res = giveme_tcp_network_download_chain(giveme_blockchain_master(), sock_cli, top_block, GIVEME_DOWNLOAD_CHAIN_FLAG_IGNORE_FIRST_BLOCK);
     if (res < 0)
     {
@@ -725,14 +735,15 @@ int giveme_network_request_blockchain()
         // We should ban this client for now since we don't want to poll him again when we are
         // having transfer problems
         giveme_network_ip_address_ignore(client.sin_addr);
-        goto out;
+        goto out_unlock_chain;
     }
 
     giveme_log("%s Downloaded updated blockchain successfully\n", __FUNCTION__);
 
-out:
+out_unlock_chain:
     giveme_unlock_chain();
 
+out:
     close(sock);
     close(sock_cli);
     return res;

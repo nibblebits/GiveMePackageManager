@@ -18,6 +18,10 @@
 #define GIVEME_UDP_MAX_BROADCASTS_FOR_CHAIN_REQUEST 30
 #define GIVEME_UDP_PACKET_QUEUE_MAXIMUM_PACKETS 1024
 
+// After five seconds a packet in the queue will be considered dead and wont be processed
+// it will be discarded.
+#define GIVEME_UDP_PACKET_QUEUE_PACKET_EXPIRE_SECONDS 5
+
 // We only ever turn on TCP when we are expecting someone, therefore we wont allow any queuing of any kind
 // first to chat with us gets priority
 #define GIVEME_TCP_SERVER_MAX_CONNECTIONS 1

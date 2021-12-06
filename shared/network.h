@@ -86,6 +86,10 @@ struct giveme_queued_udp_packet
 {
     struct in_addr addr;
     struct giveme_udp_packet packet;
+
+    // If its been over five seconds the packet is just discarded and not processed
+    // as the UDP data by this point is likely too old to work with anyway
+    time_t created;
 };
 
 enum
