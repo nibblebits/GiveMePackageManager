@@ -818,6 +818,35 @@ int giveme_udp_network_handle_block(struct giveme_udp_packet *packet, struct in_
     return 0;
 }
 
+int giveme_udp_network_handle_chain_block_count(struct giveme_udp_packet* packet, struct in_addr* from_address)
+{
+    int res = 0;
+    size_t total_blocks = packet->block_count.total;
+    // We don't care about a block count equal or less than ours. 
+    if (total_blocks <= giveme_blockchain_block_count())
+    {
+        return 0;
+    }
+    giveme_log("%s peer has greater block count than us we will exchange our chain for theirs\n", __FUNCTION__);
+    int sockfd = giveme_tcp_network_connect(*from_address);
+    if (sockfd < 0)
+    {
+        giveme_log("%s failed to connect to peer\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+    // They have more blocks than us? Its possible that we are working on the wrong chain.
+    res = giveme_tcp_network_block_count_exchange_download(sockfd);
+    if (res < 0)
+    {
+        giveme_log("%s failed to do a block exchange\n", __FUNCTION__);
+        goto out;
+    }
+
+out:
+    close(sockfd);
+    return 0;
+}
 int giveme_udp_network_handle_request_chain(struct giveme_udp_packet *packet, struct in_addr *from_address)
 {
     int res = 0;
@@ -897,6 +926,10 @@ int giveme_udp_network_handle_packet(struct giveme_udp_packet *packet, struct in
 
     case GIVEME_UDP_PACKET_TYPE_REQUEST_CHAIN:
         giveme_udp_network_handle_request_chain(packet, from_address);
+        break;
+
+    case GIVEME_UDP_PACKET_TYPE_CHAIN_BLOCK_COUNT:
+        giveme_udp_network_handle_chain_block_count(packet, from_address);
         break;
     }
     return 0;
