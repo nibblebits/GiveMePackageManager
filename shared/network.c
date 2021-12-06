@@ -486,6 +486,12 @@ int giveme_udp_network_process_queued_packets()
     return 0;
 }
 
+int giveme_sync_work(struct queued_work *work)
+{
+    giveme_network_request_blockchain_try(GIVEME_MAX_BLOCKCHAIN_REQUESTS_IF_FAILED);
+    giveme_udp_network_send_my_block_count();
+    return 0;
+}
 int giveme_process_thread(struct queued_work *work)
 {
     // We want to send our blockchain count frequently
@@ -498,8 +504,7 @@ int giveme_process_thread(struct queued_work *work)
         giveme_udp_network_process_queued_packets();
         if (time(NULL) - last_sync > interval_to_sync)
         {
-            giveme_network_request_blockchain_try(GIVEME_MAX_BLOCKCHAIN_REQUESTS_IF_FAILED);
-            giveme_udp_network_send_my_block_count();
+            giveme_queue_work(giveme_sync_work, NULL);
             last_sync = time(NULL);
         }
     }
@@ -818,11 +823,11 @@ int giveme_udp_network_handle_block(struct giveme_udp_packet *packet, struct in_
     return 0;
 }
 
-int giveme_udp_network_handle_chain_block_count(struct giveme_udp_packet* packet, struct in_addr* from_address)
+int giveme_udp_network_handle_chain_block_count(struct giveme_udp_packet *packet, struct in_addr *from_address)
 {
     int res = 0;
     size_t total_blocks = packet->block_count.total;
-    // We don't care about a block count equal or less than ours. 
+    // We don't care about a block count equal or less than ours.
     if (total_blocks <= giveme_blockchain_block_count())
     {
         return 0;
