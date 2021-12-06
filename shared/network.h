@@ -33,6 +33,7 @@ struct network
     // recently received from the network.
     struct vector* queued_udp_packets;
     pthread_mutex_t queued_udp_packets_lock;
+    pthread_mutex_t tcp_lock;
 
 };
 

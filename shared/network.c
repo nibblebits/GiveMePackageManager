@@ -395,6 +395,7 @@ void giveme_udp_network_send_my_block_count()
 {
     giveme_lock_chain();
     giveme_log("%s sending my block count to the network\n", __FUNCTION__);
+    pthread_mutex_lock(&network.tcp_lock);
     struct sockaddr_in tcp_sock;
     // We want someone to connect to us so we can send our blockchain if needed
     int sock = giveme_tcp_network_listen(&tcp_sock);
@@ -423,18 +424,21 @@ void giveme_udp_network_send_my_block_count()
 out:
     close(client_s);
     close(sock);
+    pthread_mutex_unlock(&network.tcp_lock);
     giveme_unlock_chain();
 }
 void giveme_udp_network_announce()
 {
     int res = 0;
+    pthread_mutex_lock(&network.tcp_lock);
     struct sockaddr_in tcp_sock;
     // We want someone to connect to us now once we send that packet
     int sock = giveme_tcp_network_listen(&tcp_sock);
     if (sock < 0)
     {
         giveme_log("Announcment failed, could not start TCP server\n");
-        return;
+        res = -1;
+        goto out;
     }
 
     struct giveme_udp_packet packet;
@@ -466,6 +470,8 @@ void giveme_udp_network_announce()
 out:
     close(client_s);
     close(sock);
+    pthread_mutex_unlock(&network.tcp_lock);
+
 }
 
 int giveme_udp_network_process_queued_packets()
@@ -692,13 +698,16 @@ out:
 int giveme_network_request_blockchain()
 {
     int res = 0;
+    pthread_mutex_lock(&network.tcp_lock);
+
     struct sockaddr_in tcp_sock;
     // We want someone to connect to us now once we send that packet
     int sock = giveme_tcp_network_listen(&tcp_sock);
     if (sock < 0)
     {
         giveme_log("%s failed to listen on TCP server when trying to get blockchain\n", __FUNCTION__);
-        return -1;
+        res = -1;
+        goto out;
     }
     giveme_log("%s started TCP server to await blockchain\n", __FUNCTION__);
     struct block *top_block = NULL;
@@ -744,6 +753,8 @@ out_unlock_chain:
     giveme_unlock_chain();
 
 out:
+    pthread_mutex_unlock(&network.tcp_lock);
+
     close(sock);
     close(sock_cli);
     return res;
@@ -1008,6 +1019,15 @@ void giveme_network_initialize()
     network.ip_addresses = vector_create(sizeof(struct in_addr));
     network.ignore_broadcast_ips = vector_create(sizeof(struct in_addr));
     network.queued_udp_packets = vector_create(sizeof(struct giveme_queued_udp_packet));
+    if (pthread_mutex_init(&network.queued_udp_packets_lock, NULL) != 0)
+    {
+        giveme_log("Failed to initialize queued_udp_packets_lock mutex\n");
+    }
+
+    if (pthread_mutex_init(&network.tcp_lock, NULL) != 0)
+    {
+        giveme_log("Failed to initialize tcp_lock mutex\n");
+    }
 
     giveme_network_load_ips();
 }
