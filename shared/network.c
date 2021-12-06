@@ -841,6 +841,7 @@ int giveme_udp_network_handle_chain_block_count(struct giveme_udp_packet *packet
     // We don't care about a block count equal or less than ours.
     if (total_blocks <= giveme_blockchain_block_count())
     {
+        giveme_log("%s peer has shared his block count of %i ours is %i we are bigger\n", total_blocks, giveme_blockchain_block_count());
         return 0;
     }
     giveme_log("%s peer has greater block count than us we will exchange our chain for theirs\n", __FUNCTION__);
