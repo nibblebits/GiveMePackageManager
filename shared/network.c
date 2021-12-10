@@ -386,7 +386,7 @@ int giveme_network_connect_to_ip(struct in_addr ip)
         return 1;
     }
 
-    return giveme_tcp_network_connect(ip);
+    return giveme_tcp_network_connect(ip) < 0 ? -1 : 0;
 }
 int giveme_network_connect()
 {
@@ -411,7 +411,7 @@ int giveme_network_connect()
     {
         int err;
         err = giveme_network_connect_to_ip(ip_address_stack);
-        if (err >= 0)
+        if (err == 0)
         {
             giveme_log("%s connected to %s\n", __FUNCTION__, inet_ntoa(ip_address_stack));
         }
@@ -475,9 +475,19 @@ int giveme_network_accept_thread(struct queued_work *work)
         if (conn->sock < 0)
         {
             giveme_log("%s Failed to accept a new client\n", __FUNCTION__);
-            free(conn);
+            giveme_network_connection_free(conn);
             continue;
         }
+
+        // Have they already connected to us ? If so then we need to drop them
+        // one connection per node..
+        if (giveme_network_ip_connected(&conn->addr.sin_addr))
+        {
+            giveme_log("%s dropping accepted client who is already connected\n", __FUNCTION__);
+            giveme_network_connection_free(conn);
+            close(conn->sock);
+        }
+
         conn->last_contact = time(NULL);
         pthread_mutex_lock(&network.tcp_lock);
         if (giveme_network_connection_add(conn) < 0)
