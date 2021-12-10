@@ -37,8 +37,14 @@ struct network
     int listen_socket;
 };
 
+enum
+{
+    GIVEME_NETWORK_TCP_PACKET_TYPE_PING
+};
+
 struct giveme_tcp_packet
 {
+    int type;
 };
 
 

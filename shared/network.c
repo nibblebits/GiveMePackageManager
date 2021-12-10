@@ -13,6 +13,8 @@
 #include <string.h>
 #include <pthread.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include "network.h"
 #include "log.h"
@@ -148,7 +150,7 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
     while (amount_left != 0)
     {
         res = send(client, ptr, amount, 0);
-        if (res <= 0)
+        if (res < 0)
         {
             return res;
         }
@@ -164,7 +166,7 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
     while (amount_left != 0)
     {
         res = recv(client, ptr, amount, 0);
-        if (res <= 0)
+        if (res < 0)
         {
             return res;
         }
@@ -437,7 +439,13 @@ int giveme_network_connection_thread(struct queued_work *work)
     return 0;
 }
 
-void giveme_network_remove_broken_sockets()
+void giveme_network_disconnect(struct network_connection** connection)
+{
+    giveme_network_connection_free(*connection);
+    *connection = NULL;
+}
+
+void giveme_network_broadcast(struct giveme_tcp_packet* packet)
 {
     pthread_mutex_lock(&network.tcp_lock);
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
@@ -445,23 +453,39 @@ void giveme_network_remove_broken_sockets()
         if (!network.connections[i])
             continue;
 
-        int error = 0;
-        socklen_t len = sizeof(error);
-        int retval = getsockopt(network.connections[i]->sock, SOL_SOCKET, SO_ERROR, &error, &len);
-        if (error < 0)
+        if(pthread_mutex_trylock(&network.connections[i]->lock) < 0)
         {
-            giveme_log("%s a peer named %s has been removed as he is no longer reachable\n", __FUNCTION__, inet_ntoa(network.connections[i]->addr.sin_addr));
-            giveme_network_connection_free(network.connections[i]);
-            network.connections[i] = NULL;
+            continue;
         }
+
+        if(giveme_tcp_send_packet(network.connections[i]->sock, packet) < 0)
+        {
+            // Problem sending packet? Then we should remove this socket from the connections
+            giveme_log("%s problem sending packet to %s\n", __FUNCTION__, inet_ntoa(network.connections[i]->addr.sin_addr));
+            giveme_network_disconnect(&network.connections[i]);
+        }
+        else
+        {
+            // We only unlock if we dont disconnect the peer.
+            pthread_mutex_unlock(&network.connections[i]->lock);
+        }
+
     }
+
     pthread_mutex_unlock(&network.tcp_lock);
+}
+
+void giveme_network_ping()
+{
+    struct giveme_tcp_packet packet;
+    packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PING;
+    giveme_network_broadcast(&packet);
 }
 int giveme_network_process_thread(struct queued_work *work)
 {
     while (1)
     {
-        giveme_network_remove_broken_sockets();
+        giveme_network_ping();
     }
     return 0;
 }
@@ -479,6 +503,8 @@ int giveme_network_accept_thread(struct queued_work *work)
             continue;
         }
 
+        pthread_mutex_lock(&network.tcp_lock);
+
         // Have they already connected to us ? If so then we need to drop them
         // one connection per node..
         if (giveme_network_ip_connected(&conn->addr.sin_addr))
@@ -489,7 +515,6 @@ int giveme_network_accept_thread(struct queued_work *work)
         }
 
         conn->last_contact = time(NULL);
-        pthread_mutex_lock(&network.tcp_lock);
         if (giveme_network_connection_add(conn) < 0)
         {
             giveme_network_connection_free(conn);
@@ -512,7 +537,10 @@ void giveme_network_initialize()
         goto out;
     }
 
+    pthread_mutex_lock(&network.tcp_lock);
     giveme_network_load_ips();
+    pthread_mutex_unlock(&network.tcp_lock);
+
 
 out:
     if (res < 0)
