@@ -458,6 +458,7 @@ void giveme_network_disconnect(struct network_connection **connection)
 
 void giveme_network_broadcast(struct giveme_tcp_packet *packet)
 {
+    giveme_log("b\n");
     pthread_mutex_lock(&network.tcp_lock);
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
