@@ -73,6 +73,11 @@ int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out, bool has_time
     return sockfd;
 }
 
+bool giveme_network_connection_connected(struct network_connection *connection)
+{
+    return connection->data != NULL;
+}
+
 int giveme_network_accept_thread_start()
 {
     giveme_queue_work(giveme_network_accept_thread, NULL);
@@ -187,14 +192,34 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
     return res;
 }
 
-int giveme_tcp_send_packet(int client, struct giveme_tcp_packet *packet)
+int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_tcp_packet *packet)
 {
-    return giveme_tcp_send_bytes(client, packet, sizeof(struct giveme_tcp_packet)) > 0 ? 0 : -1;
+    if (!giveme_network_connection_connected(connection))
+    {
+        return -1;
+    }
+
+    int client = connection->data->sock;
+    int res = giveme_tcp_send_bytes(client, packet, sizeof(struct giveme_tcp_packet)) > 0 ? 0 : -1;
+    if (res == 0)
+    {
+        connection->data->last_contact = time(NULL);
+    }
 }
 
-int giveme_tcp_recv_packet(int client, struct giveme_tcp_packet *packet)
+int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_tcp_packet *packet)
 {
-    return giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_tcp_packet)) > 0 ? 0 : -1;
+    if (!giveme_network_connection_connected(connection))
+    {
+        return -1;
+    }
+
+    int client = connection->data->sock;
+    int res = giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_tcp_packet)) > 0 ? 0 : -1;
+    if (res == 0)
+    {
+        connection->data->last_contact = time(NULL);
+    }
 }
 
 bool giveme_network_ip_connected(struct in_addr *addr)
@@ -475,7 +500,7 @@ void giveme_network_broadcast(struct giveme_tcp_packet *packet)
             continue;
         }
 
-        if (giveme_tcp_send_packet(network.connections[i].data->sock, packet) < 0)
+        if (giveme_tcp_send_packet(&network.connections[i], packet) < 0)
         {
             // Problem sending packet? Then we should remove this socket from the connections
             giveme_log("%s problem sending packet to %s\n", __FUNCTION__, inet_ntoa(network.connections[i].data->addr.sin_addr));
@@ -484,8 +509,6 @@ void giveme_network_broadcast(struct giveme_tcp_packet *packet)
 
         pthread_mutex_unlock(&network.connections[i].lock);
     }
-
-    pthread_mutex_unlock(&network.tcp_lock);
 }
 
 void giveme_network_ping()
@@ -495,22 +518,12 @@ void giveme_network_ping()
     giveme_network_broadcast(&packet);
 }
 
-int giveme_network_connection_socket(int index)
+int giveme_network_connection_socket(struct network_connection* connection)
 {
-    if (network.connections[index].data)
-    {
-        return network.connections[index].data->sock;
-    }
-
-    return -1;
+    return connection->data ? connection->data->sock : -1;
 }
 
-bool giveme_network_connection_connected(struct network_connection *connection)
-{
-    return connection->data != NULL;
-}
-
-void giveme_network_packet_process(struct giveme_tcp_packet* packet)
+void giveme_network_packet_process(struct giveme_tcp_packet *packet)
 {
     giveme_log("Handled packet type %i\n", packet->type);
 }
@@ -518,17 +531,18 @@ void giveme_network_packets_process()
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-        if (pthread_mutex_trylock(&network.connections[i].lock) < 0)
+        struct network_connection* connection = &network.connections[i];
+        if (pthread_mutex_trylock(&connection->lock) < 0)
         {
             continue;
         }
-        if (!giveme_network_connection_connected(&network.connections[i]))
+        if (!giveme_network_connection_connected(connection))
         {
-            pthread_mutex_unlock(&network.connections[i].lock);
+            pthread_mutex_unlock(&connection->lock);
             continue;
         }
 
-        int sock = giveme_network_connection_socket(i);
+        int sock = giveme_network_connection_socket(connection);
         int count = 0;
         do
         {
@@ -540,14 +554,15 @@ void giveme_network_packets_process()
             if (count > 0)
             {
                 struct giveme_tcp_packet packet = {};
-                if(giveme_tcp_recv_packet(sock, &packet) < 0)
+                if (giveme_tcp_recv_packet(connection, &packet) < 0)
                 {
                     giveme_log("%s failed to read packet even though data was supposed to be available\n", __FUNCTION__);
                 }
+                giveme_network_packet_process(&packet);
             }
         } while (count > 0);
 
-loop_end:
+    loop_end:
         pthread_mutex_unlock(&network.connections[i].lock);
     }
 }
@@ -558,6 +573,7 @@ int giveme_network_process_thread(struct queued_work *work)
     {
         giveme_network_ping();
         giveme_network_packets_process();
+        sleep(1);
     }
     return 0;
 }
