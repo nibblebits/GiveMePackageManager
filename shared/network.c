@@ -383,7 +383,7 @@ int giveme_network_connect_to_ip(struct in_addr ip)
     // We are already connected to this client.
     if (giveme_network_ip_connected(&ip))
     {
-        return 0;
+        return 1;
     }
 
     return giveme_tcp_network_connect(ip);
@@ -444,11 +444,11 @@ void giveme_network_remove_broken_sockets()
     {
         if (!network.connections[i])
             continue;
-            
+
         int error = 0;
         socklen_t len = sizeof(error);
         int retval = getsockopt(network.connections[i]->sock, SOL_SOCKET, SO_ERROR, &error, &len);
-        if (retval < 0)
+        if (error < 0)
         {
             giveme_log("%s a peer named %s has been removed as he is no longer reachable\n", __FUNCTION__, inet_ntoa(network.connections[i]->addr.sin_addr));
             giveme_network_connection_free(network.connections[i]);
