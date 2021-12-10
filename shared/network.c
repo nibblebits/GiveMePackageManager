@@ -160,7 +160,7 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
     size_t amount_left = amount;
     while (amount_left != 0)
     {
-        res = send(client, ptr, amount, 0);
+        res = write(client, ptr, amount);
         if (res < 0)
         {
             return res;
