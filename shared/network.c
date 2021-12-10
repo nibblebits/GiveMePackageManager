@@ -411,7 +411,7 @@ int giveme_network_connect()
     {
         int err;
         err = giveme_network_connect_to_ip(ip_address_stack);
-        if (err == 0)
+        if (err >= 0)
         {
             giveme_log("%s connected to %s\n", __FUNCTION__, inet_ntoa(ip_address_stack));
         }
