@@ -139,6 +139,17 @@ int giveme_tcp_network_accept(int sock, struct sockaddr_in *client_out)
         return -1;
     }
 
+    struct timeval timeout;
+    timeout.tv_sec = GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(connfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                   sizeof timeout) < 0)
+    {
+        giveme_log("Failed to set socket timeout\n");
+        return -1;
+    }
+
     *client_out = client;
     return connfd;
 }
@@ -439,13 +450,13 @@ int giveme_network_connection_thread(struct queued_work *work)
     return 0;
 }
 
-void giveme_network_disconnect(struct network_connection** connection)
+void giveme_network_disconnect(struct network_connection **connection)
 {
     giveme_network_connection_free(*connection);
     *connection = NULL;
 }
 
-void giveme_network_broadcast(struct giveme_tcp_packet* packet)
+void giveme_network_broadcast(struct giveme_tcp_packet *packet)
 {
     pthread_mutex_lock(&network.tcp_lock);
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
@@ -453,12 +464,12 @@ void giveme_network_broadcast(struct giveme_tcp_packet* packet)
         if (!network.connections[i])
             continue;
 
-        if(pthread_mutex_trylock(&network.connections[i]->lock) < 0)
+        if (pthread_mutex_trylock(&network.connections[i]->lock) < 0)
         {
             continue;
         }
 
-        if(giveme_tcp_send_packet(network.connections[i]->sock, packet) < 0)
+        if (giveme_tcp_send_packet(network.connections[i]->sock, packet) < 0)
         {
             // Problem sending packet? Then we should remove this socket from the connections
             giveme_log("%s problem sending packet to %s\n", __FUNCTION__, inet_ntoa(network.connections[i]->addr.sin_addr));
@@ -469,7 +480,6 @@ void giveme_network_broadcast(struct giveme_tcp_packet* packet)
             // We only unlock if we dont disconnect the peer.
             pthread_mutex_unlock(&network.connections[i]->lock);
         }
-
     }
 
     pthread_mutex_unlock(&network.tcp_lock);
@@ -540,7 +550,6 @@ void giveme_network_initialize()
     pthread_mutex_lock(&network.tcp_lock);
     giveme_network_load_ips();
     pthread_mutex_unlock(&network.tcp_lock);
-
 
 out:
     if (res < 0)

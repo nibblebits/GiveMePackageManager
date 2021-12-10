@@ -30,7 +30,7 @@
 // If we have no client accepted or message within 2 seconds we will drop the TCP connection
 #define GIVEME_NETWORK_TCP_CONNECT_TIMEOUT_SECONDS 2
 // 30 seconds waiting on a recv or send and we will timeout.
-#define GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS 30
+#define GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS 7
 
 // Blockchain will resize its self after 1024 blocks, and it will resize to +1024 blocks each time
 #define BLOCKCHAIN_RESIZE_TOTAL_BLOCKS 1024
