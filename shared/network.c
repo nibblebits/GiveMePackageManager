@@ -483,7 +483,7 @@ int giveme_network_accept_thread(struct queued_work *work)
         // one connection per node..
         if (giveme_network_ip_connected(&conn->addr.sin_addr))
         {
-            giveme_log("%s dropping accepted client who is already connected\n", __FUNCTION__);
+            giveme_log("%s dropping accepted client who is already connected %s\n", __FUNCTION__, inet_ntoa(conn->addr.sin_addr));
             giveme_network_connection_free(conn);
             close(conn->sock);
         }
