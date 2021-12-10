@@ -112,6 +112,12 @@ int giveme_package_create(const char *path, const char *package_name)
     // packet.type = GIVEME_UDP_PACKET_TYPE_PUBLISH_PACKAGE;
     // strncpy(packet.package.name, package_name, sizeof(packet.package.name));
     // giveme_udp_broadcast(&packet);
+
+    struct giveme_tcp_packet packet = {};
+    packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE;
+    strncpy(packet.publish_package.name, package_name, sizeof(packet.publish_package.name));
+    giveme_network_broadcast(&packet);
+    
     return res;
 
 }

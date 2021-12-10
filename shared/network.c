@@ -523,9 +523,23 @@ int giveme_network_connection_socket(struct network_connection* connection)
     return connection->data ? connection->data->sock : -1;
 }
 
+void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet* packet)
+{
+    giveme_log("%s Publish package request for packet %s\n", __FUNCTION__, packet->publish_package.name);
+}
 void giveme_network_packet_process(struct giveme_tcp_packet *packet)
 {
-    giveme_log("Handled packet type %i\n", packet->type);
+    switch(packet->type)
+    {
+        case GIVEME_NETWORK_TCP_PACKET_TYPE_PING:
+        // We ignore pings, they are used to check peer is still here..
+        break;
+
+        case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
+            giveme_network_packet_handle_publish_package(packet);
+        break;
+
+    }
 }
 void giveme_network_packets_process()
 {
