@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/ioctl.h>
 
 #include "network.h"
 #include "log.h"
@@ -200,12 +201,15 @@ bool giveme_network_ip_connected(struct in_addr *addr)
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-        if (network.connections[i] &&
-            memcmp(&network.connections[i]->addr.sin_addr, addr, sizeof(network.connections[i]->addr.sin_addr)) == 0)
+        pthread_mutex_lock(&network.connections[i].lock);
+        if (network.connections[i].data &&
+            memcmp(&network.connections[i].data->addr.sin_addr, addr, sizeof(network.connections[i].data->addr.sin_addr)) == 0)
         {
             // The IP is connected
+            pthread_mutex_unlock(&network.connections[i].lock);
             return true;
         }
+        pthread_mutex_unlock(&network.connections[i].lock);
     }
 
     return false;
@@ -257,55 +261,59 @@ void giveme_network_load_ips()
     giveme_network_ip_address_add(addr);
 }
 
-struct network_connection **giveme_network_connection_find_slot()
+struct network_connection *giveme_network_connection_find_slot(pthread_mutex_t **lock_to_unlock)
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-        if (network.connections[i] == NULL)
+        pthread_mutex_lock(&network.connections[i].lock);
+        if (network.connections[i].data == NULL)
+        {
+            // Since we found a free slot we expect the caller to unlock the mutex
+            // we tell the caller what the lock is so they know they have to unlock it.
+            *lock_to_unlock = &network.connections[i].lock;
             return &network.connections[i];
+        }
+        pthread_mutex_unlock(&network.connections[i].lock);
     }
 
     return NULL;
 }
 
-int giveme_network_connection_add(struct network_connection *connection)
+int giveme_network_connection_add(struct network_connection_data *data)
 {
-    struct network_connection **conn_slot = giveme_network_connection_find_slot();
+    pthread_mutex_t *lock_to_unlock;
+    struct network_connection *conn_slot = giveme_network_connection_find_slot(&lock_to_unlock);
     if (!conn_slot)
     {
         return -1;
     }
 
-    *conn_slot = connection;
+    conn_slot->data = data;
     network.total_connected++;
+
+    // We must now unlock the lock that was locked for finding this connection
+    pthread_mutex_unlock(lock_to_unlock);
     return 0;
 }
 
-struct network_connection *giveme_network_connection_new()
+struct network_connection_data *giveme_network_connection_data_new()
 {
     int res = 0;
-    struct network_connection *conn = calloc(1, sizeof(struct network_connection));
-    if (pthread_mutex_init(&conn->lock, NULL) != 0)
-    {
-        giveme_log("Failed to initialize tcp_lock mutex\n");
-        res = -1;
-        goto out;
-    }
+    struct network_connection_data *data = calloc(1, sizeof(struct network_connection_data));
 
 out:
     if (res < 0)
         return NULL;
 
-    return conn;
+    return data;
 }
-int giveme_network_connection_free(struct network_connection *conn)
+int giveme_network_connection_data_free(struct network_connection_data *data)
 {
-    pthread_mutex_destroy(&conn->lock);
-    if (conn->sock)
+    if (data->sock)
     {
-        close(conn->sock);
+        close(data->sock);
     }
-    free(conn);
+    free(data);
     return 0;
 }
 
@@ -378,16 +386,14 @@ int giveme_tcp_network_connect(struct in_addr addr)
         return -1;
     }
 
-    struct network_connection *conn = giveme_network_connection_new();
-    conn->sock = sockfd;
-    conn->addr = servaddr;
-    conn->last_contact = time(NULL);
-    pthread_mutex_lock(&network.tcp_lock);
-    if (giveme_network_connection_add(conn) < 0)
+    struct network_connection_data *data = giveme_network_connection_data_new();
+    data->sock = sockfd;
+    data->addr = servaddr;
+    data->last_contact = time(NULL);
+    if (giveme_network_connection_add(data) < 0)
     {
-        giveme_network_connection_free(conn);
+        giveme_network_connection_data_free(data);
     }
-    pthread_mutex_unlock(&network.tcp_lock);
     return sockfd;
 }
 
@@ -450,42 +456,36 @@ int giveme_network_connection_thread(struct queued_work *work)
     return 0;
 }
 
-void giveme_network_disconnect(struct network_connection **connection)
+void giveme_network_disconnect(struct network_connection *connection)
 {
-    giveme_network_connection_free(*connection);
-    *connection = NULL;
+    giveme_network_connection_data_free(connection->data);
+    connection->data = NULL;
 }
 
 void giveme_network_broadcast(struct giveme_tcp_packet *packet)
 {
-    pthread_mutex_lock(&network.tcp_lock);
 
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-        if (!network.connections[i])
+        if (!network.connections[i].data)
             continue;
 
-        // if (pthread_mutex_trylock(&network.connections[i]->lock) < 0)
-        // {
-        //     continue;
-        // }
+        if (pthread_mutex_trylock(&network.connections[i].lock) < 0)
+        {
+            continue;
+        }
 
-        if (giveme_tcp_send_packet(network.connections[i]->sock, packet) < 0)
+        if (giveme_tcp_send_packet(network.connections[i].data->sock, packet) < 0)
         {
             // Problem sending packet? Then we should remove this socket from the connections
-            giveme_log("%s problem sending packet to %s\n", __FUNCTION__, inet_ntoa(network.connections[i]->addr.sin_addr));
+            giveme_log("%s problem sending packet to %s\n", __FUNCTION__, inet_ntoa(network.connections[i].data->addr.sin_addr));
             giveme_network_disconnect(&network.connections[i]);
         }
-        else
-        {
-            // We only unlock if we dont disconnect the peer.
-           // pthread_mutex_unlock(&network.connections[i]->lock);
-        }
+
+        pthread_mutex_unlock(&network.connections[i].lock);
     }
 
     pthread_mutex_unlock(&network.tcp_lock);
-
-
 }
 
 void giveme_network_ping()
@@ -494,11 +494,70 @@ void giveme_network_ping()
     packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PING;
     giveme_network_broadcast(&packet);
 }
+
+int giveme_network_connection_socket(int index)
+{
+    if (network.connections[index].data)
+    {
+        return network.connections[index].data->sock;
+    }
+
+    return -1;
+}
+
+bool giveme_network_connection_connected(struct network_connection *connection)
+{
+    return connection->data != NULL;
+}
+
+void giveme_network_packet_process(struct giveme_tcp_packet* packet)
+{
+    giveme_log("Handled packet type %i\n", packet->type);
+}
+void giveme_network_packets_process()
+{
+    for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
+    {
+        if (pthread_mutex_trylock(&network.connections[i].lock) < 0)
+        {
+            continue;
+        }
+        if (!giveme_network_connection_connected(&network.connections[i]))
+        {
+            pthread_mutex_unlock(&network.connections[i].lock);
+            continue;
+        }
+
+        int sock = giveme_network_connection_socket(i);
+        int count = 0;
+        do
+        {
+            if (ioctl(sock, FIONREAD, &count) < 0)
+            {
+                giveme_log("%s failed to poll the connection with index %i for bytes\n", __FUNCTION__, count);
+                goto loop_end;
+            }
+            if (count > 0)
+            {
+                struct giveme_tcp_packet packet = {};
+                if(giveme_tcp_recv_packet(sock, &packet) < 0)
+                {
+                    giveme_log("%s failed to read packet even though data was supposed to be available\n", __FUNCTION__);
+                }
+            }
+        } while (count > 0);
+
+loop_end:
+        pthread_mutex_unlock(&network.connections[i].lock);
+    }
+}
+
 int giveme_network_process_thread(struct queued_work *work)
 {
     while (1)
     {
         giveme_network_ping();
+        giveme_network_packets_process();
     }
     return 0;
 }
@@ -507,38 +566,44 @@ int giveme_network_accept_thread(struct queued_work *work)
 {
     while (1)
     {
-        struct network_connection *conn = giveme_network_connection_new();
-        conn->sock = giveme_tcp_network_accept(network.listen_socket, &conn->addr);
-        if (conn->sock < 0)
+        struct network_connection_data *data = giveme_network_connection_data_new();
+        data->sock = giveme_tcp_network_accept(network.listen_socket, &data->addr);
+        if (data->sock < 0)
         {
             giveme_log("%s Failed to accept a new client\n", __FUNCTION__);
-            giveme_network_connection_free(conn);
+            giveme_network_connection_data_free(data);
             continue;
         }
-
-        pthread_mutex_lock(&network.tcp_lock);
 
         // Have they already connected to us ? If so then we need to drop them
         // one connection per node..
-        if (giveme_network_ip_connected(&conn->addr.sin_addr))
+        if (giveme_network_ip_connected(&data->addr.sin_addr))
         {
-            giveme_log("%s dropping accepted client who is already connected %s\n", __FUNCTION__, inet_ntoa(conn->addr.sin_addr));
-            giveme_network_connection_free(conn);
-            pthread_mutex_unlock(&network.tcp_lock);
+            giveme_log("%s dropping accepted client who is already connected %s\n", __FUNCTION__, inet_ntoa(data->addr.sin_addr));
+            giveme_network_connection_data_free(data);
             continue;
         }
 
-        conn->last_contact = time(NULL);
-        if (giveme_network_connection_add(conn) < 0)
+        data->last_contact = time(NULL);
+        if (giveme_network_connection_add(data) < 0)
         {
-            giveme_network_connection_free(conn);
+            giveme_network_connection_data_free(data);
         }
-        pthread_mutex_unlock(&network.tcp_lock);
         sleep(1);
     }
     return 0;
 }
 
+void giveme_network_initialize_connections()
+{
+    for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
+    {
+        if (pthread_mutex_init(&network.connections[i].lock, NULL) != 0)
+        {
+            giveme_log("%s failed to initialize network connection lock index %i\n", __FUNCTION__, i);
+        }
+    }
+}
 void giveme_network_initialize()
 {
     int res = 0;
@@ -554,6 +619,8 @@ void giveme_network_initialize()
     pthread_mutex_lock(&network.tcp_lock);
     giveme_network_load_ips();
     pthread_mutex_unlock(&network.tcp_lock);
+
+    giveme_network_initialize_connections();
 
 out:
     if (res < 0)

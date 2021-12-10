@@ -11,14 +11,19 @@
 #define GIVEME_RECV_PACKET_UNEXPECTED -1
 #define GIVEME_RECV_PACKET_WRONG_CHAIN -2
 
-struct network_connection
+struct network_connection_data
 {
     int sock;
     struct sockaddr_in addr;
-    pthread_mutex_t lock;
 
     // The timestamp of the last communication with this socket.
     time_t last_contact;
+};
+
+struct network_connection
+{
+    pthread_mutex_t lock;
+    struct network_connection_data *data;
 };
 
 struct network
@@ -26,7 +31,7 @@ struct network
     // IP Addresses on the network vector of struct in_addr
     struct vector *ip_addresses;
 
-    struct network_connection *connections[GIVEME_TCP_SERVER_MAX_CONNECTIONS];
+    struct network_connection connections[GIVEME_TCP_SERVER_MAX_CONNECTIONS];
     size_t total_connected;
 
     // Locked when preforming TCP actions that must not conflict such as modiying
@@ -47,13 +52,9 @@ struct giveme_tcp_packet
     int type;
 };
 
-
 void giveme_network_initialize();
 int giveme_network_listen();
 int giveme_network_connection_thread_start();
 int giveme_network_process_thread_start();
-
-
-
 
 #endif
