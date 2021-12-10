@@ -458,15 +458,17 @@ void giveme_network_disconnect(struct network_connection **connection)
 
 void giveme_network_broadcast(struct giveme_tcp_packet *packet)
 {
+    pthread_mutex_lock(&network.tcp_lock);
+
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
         if (!network.connections[i])
             continue;
 
-        if (pthread_mutex_trylock(&network.connections[i]->lock) < 0)
-        {
-            continue;
-        }
+        // if (pthread_mutex_trylock(&network.connections[i]->lock) < 0)
+        // {
+        //     continue;
+        // }
 
         if (giveme_tcp_send_packet(network.connections[i]->sock, packet) < 0)
         {
@@ -477,9 +479,12 @@ void giveme_network_broadcast(struct giveme_tcp_packet *packet)
         else
         {
             // We only unlock if we dont disconnect the peer.
-            pthread_mutex_unlock(&network.connections[i]->lock);
+           // pthread_mutex_unlock(&network.connections[i]->lock);
         }
     }
+
+    pthread_mutex_unlock(&network.tcp_lock);
+
 
 }
 
@@ -519,7 +524,8 @@ int giveme_network_accept_thread(struct queued_work *work)
         {
             giveme_log("%s dropping accepted client who is already connected %s\n", __FUNCTION__, inet_ntoa(conn->addr.sin_addr));
             giveme_network_connection_free(conn);
-            close(conn->sock);
+            pthread_mutex_unlock(&network.tcp_lock);
+            continue;
         }
 
         conn->last_contact = time(NULL);
