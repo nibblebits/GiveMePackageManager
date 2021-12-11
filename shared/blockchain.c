@@ -353,7 +353,9 @@ void giveme_blockchain_create_genesis_block()
     memset(&genesis_block, 0, sizeof(genesis_block));
     genesis_block.data.transactions.total = 1;
 
-    struct giveme_tcp_packet_publish_key* key = &genesis_block.data.transactions.transactions[0].packet.publish_public_key;
+    struct giveme_tcp_packet* packet = &genesis_block.data.transactions.transactions[0].packet;
+    packet->type = GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY;
+    struct giveme_tcp_packet_publish_key* key = &packet->publish_public_key;
     strncpy(key->name, "Genesis Individual", sizeof(key->name));
     key->pub_key.size = strlen(GIVEME_BLOCKCHAIN_GENESIS_KEY);
     strncpy(key->pub_key.key, GIVEME_BLOCKCHAIN_GENESIS_KEY, sizeof(key->pub_key.key));
