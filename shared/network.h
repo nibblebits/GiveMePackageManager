@@ -2,6 +2,7 @@
 #define GIVEME_NETWORK_H
 
 #include "config.h"
+#include "key.h"
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -29,21 +30,35 @@ struct network_connection
 enum
 {
     GIVEME_NETWORK_TCP_PACKET_TYPE_PING,
-    GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE
+    GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE,
+    GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY
 };
 
 struct giveme_tcp_packet
 {
     int type;
 
-    struct giveme_tcp_packet_publish_package
+    union
     {
-        char name[PACKAGE_NAME_MAX];
+        struct giveme_tcp_packet_publish_package
+        {
+            char name[GIVEME_PACKAGE_NAME_MAX];
 
-    } publish_package;
+        } publish_package;
+
+        struct giveme_tcp_packet_publish_key
+        {
+            struct key pub_key;
+            char name[GIVEME_KEY_NAME_MAX];
+        } publish_public_key;
+
+
+        // In case we want to add special packets in the future
+        // we should reserve some data in the tcp packet
+        // which will also affect the block size
+        char s[GIVEME_MINIMUM_TCP_PACKET_SIZE];
+    };
 };
-
-
 
 /**
  * @brief A single transaction holds a packet and a creation time.
@@ -66,7 +81,7 @@ struct network
 
     struct network_transactions
     {
-        struct network_transaction* awaiting[GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK];
+        struct network_transaction *awaiting[GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK];
         int total;
         pthread_mutex_t lock;
     } transactions;

@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <memory.h>
+#include <assert.h>
 #include "log.h"
 #include "misc.h"
 #include "config.h"
@@ -19,17 +20,17 @@
 struct key public_key = {};
 struct key private_key = {};
 
-struct key* giveme_public_key()
+struct key *giveme_public_key()
 {
     return &public_key;
 }
 
-struct key* giveme_private_key()
+struct key *giveme_private_key()
 {
     return &private_key;
 }
 
-const char* decrypt_public(struct key* key, const char* input, size_t input_len, size_t* out_size)
+const char *decrypt_public(struct key *key, const char *input, size_t input_len, size_t *out_size)
 {
 
     RSA *pb_rsa = NULL;
@@ -55,11 +56,11 @@ const char* decrypt_public(struct key* key, const char* input, size_t input_len,
     size_t size = RSA_size(p_rsa);
     *out_size = size;
 
-    char* encrypt = calloc(1, size);
+    char *encrypt = calloc(1, size);
 
     int encrypt_len;
     if ((encrypt_len = RSA_public_decrypt(input_len, (unsigned char *)input,
-                                           (unsigned char *)encrypt, p_rsa, RSA_PKCS1_PADDING)) == -1)
+                                          (unsigned char *)encrypt, p_rsa, RSA_PKCS1_PADDING)) == -1)
     {
         giveme_log("decrypt_public(): problem encrypting with public key");
     }
@@ -68,8 +69,7 @@ const char* decrypt_public(struct key* key, const char* input, size_t input_len,
     return encrypt;
 }
 
-
-const char* encrypt_private(const char* input, size_t input_len, size_t* size_out)
+const char *encrypt_private(const char *input, size_t input_len, size_t *size_out)
 {
 
     RSA *pb_rsa = NULL;
@@ -95,7 +95,7 @@ const char* encrypt_private(const char* input, size_t input_len, size_t* size_ou
     size_t size = RSA_size(p_rsa);
     *size_out = size;
 
-    char* encrypt = calloc(1, size);
+    char *encrypt = calloc(1, size);
 
     int encrypt_len;
     if ((encrypt_len = RSA_private_encrypt(input_len, (unsigned char *)input,
@@ -107,7 +107,6 @@ const char* encrypt_private(const char* input, size_t input_len, size_t* size_ou
     BIO_free(pkeybio);
     return encrypt;
 }
-
 
 const char *giveme_private_key_filepath()
 {
@@ -216,6 +215,7 @@ int generate_key()
 
 void giveme_load_public_key()
 {
+    memset(&public_key, 0, sizeof(public_key));
     FILE *fp = fopen(giveme_public_key_filepath(), "r");
     if (!fp)
     {
@@ -227,7 +227,7 @@ void giveme_load_public_key()
     size_t size = ftell(fp);
     rewind(fp);
 
-    public_key.key = calloc(1, size + 1);
+    assert(size < sizeof(public_key.key));
     if (fread(public_key.key, size, 1, fp) != 1)
     {
         giveme_log("Failed to read public key file\n");
@@ -237,6 +237,8 @@ void giveme_load_public_key()
 
 void giveme_load_private_key()
 {
+    memset(&private_key, 0, sizeof(private_key));
+
     FILE *fp = fopen(giveme_private_key_filepath(), "r");
     if (!fp)
     {
@@ -248,7 +250,8 @@ void giveme_load_private_key()
     size_t size = ftell(fp);
     rewind(fp);
 
-    private_key.key = calloc(1, size + 1);
+    assert(size < sizeof(private_key.key));
+
     if (fread(private_key.key, size, 1, fp) != 1)
     {
         giveme_log("Failed to read private key file\n");
@@ -266,5 +269,4 @@ void giveme_load_keypair()
 
     giveme_load_public_key();
     giveme_load_private_key();
-
 }

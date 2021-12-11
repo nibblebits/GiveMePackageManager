@@ -157,7 +157,7 @@ int giveme_network_af_unix_handle_packet_publish(int sock, struct network_af_uni
 
     giveme_log("Package publish request %s located at %s\n", packet->publish.package, packet->publish.filename);
 
-    // Let's make an achieve
+    // Let's make an archive
     giveme_package_create(packet->publish.filename, packet->publish.package);
 
     // We have a request from the client to publish a packet to the network

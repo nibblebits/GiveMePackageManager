@@ -59,7 +59,7 @@ struct giveme_udp_packet
 
         struct giveme_udp_packet_publish_package
         {
-            char name[PACKAGE_NAME_MAX];
+            char name[GIVEME_PACKAGE_NAME_MAX];
 
         } package;
 

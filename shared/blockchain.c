@@ -35,7 +35,59 @@ void giveme_unlock_chain()
     pthread_mutex_unlock(&blockchain_mine_lock);
 }
 
-off_t giveme_blockchain_index_for_block_for_chain(struct blockchain* chain, const char *hash)
+double giveme_blockchain_balance_change_for_block(struct key* key, struct block* block)
+{
+    double balance_change = 0;
+    if (memcmp(&block->data.validator_key, key, sizeof(block->data.validator_key)) == 0)
+    {
+        // The validator key matches? Let's apply a balance change.
+        // they validated this block so got rewarded for it.
+        balance_change += GIVEME_VALIDATION_MINING_REWARD;
+    }
+
+    return balance_change;
+}
+
+int giveme_blockchain_get_individual(struct key *key, struct blockchain_individual *individual_out)
+{
+    memset(individual_out, 0, sizeof(struct blockchain_individual));
+    giveme_blockchain_begin_crawl(NULL, NULL);
+    struct block *block = giveme_blockchain_crawl_next(0);
+    struct block *prev_block = NULL;
+    while (block)
+    {
+        for (int i = 0; i < block->data.transactions.total; i++)
+        {
+            struct network_transaction *transaction;
+            transaction = &block->data.transactions.transactions[i];
+            if (transaction->packet.type == GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY)
+            {
+                struct giveme_tcp_packet_publish_key *published_key;
+                published_key = &transaction->packet.publish_public_key;
+
+                // We found a public key packet does it match our key
+                if (memcmp(&published_key->pub_key, key, sizeof(key)) == 0)
+                {
+                    // Yep it matches this was when this key was first ever published
+                    memcpy(&individual_out->key_data.key, &published_key->pub_key, sizeof(struct key));
+                    strncpy(individual_out->key_data.name, published_key->name, sizeof(individual_out->key_data.name));
+                    individual_out->flags |= GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN;
+                }
+            }
+            else if (memcmp(&block->data.validator_key, &key, sizeof(key)))
+            {
+                // This key verified this block lets increment
+                individual_out->key_data.verified_blocks.total++;
+            }
+
+            individual_out->key_data.balance += giveme_blockchain_balance_change_for_block(key, block);
+        }
+        block = giveme_blockchain_crawl_next(0);
+    }
+
+    return -1;
+}
+off_t giveme_blockchain_index_for_block_for_chain(struct blockchain *chain, const char *hash)
 {
     struct block blank_block = {};
     // First block requested? then return 0
@@ -60,17 +112,17 @@ off_t giveme_blockchain_index_for_block(const char *hash)
     return giveme_blockchain_index_for_block_for_chain(&blockchain, hash);
 }
 
-struct blockchain* giveme_blockchain_master()
+struct blockchain *giveme_blockchain_master()
 {
     return &blockchain;
 }
 
-struct block* giveme_blockchain_block(const char* hash, size_t* blocks_left_to_end)
+struct block *giveme_blockchain_block(const char *hash, size_t *blocks_left_to_end)
 {
     off_t index = giveme_blockchain_index_for_block(hash);
     if (index < 0)
         return NULL;
-    
+
     if (blocks_left_to_end)
     {
         *blocks_left_to_end = giveme_blockchain_total_blocks_left(index);
@@ -78,7 +130,7 @@ struct block* giveme_blockchain_block(const char* hash, size_t* blocks_left_to_e
     return &blockchain.block[index];
 }
 
-int giveme_blockchain_begin_crawl_for_chain(struct blockchain* chain, const char *start_hash, const char *end_hash)
+int giveme_blockchain_begin_crawl_for_chain(struct blockchain *chain, const char *start_hash, const char *end_hash)
 {
     int res = 0;
     chain->crawl.crawling = true;
@@ -100,7 +152,7 @@ int giveme_blockchain_begin_crawl(const char *start_hash, const char *end_hash)
     return giveme_blockchain_begin_crawl_for_chain(&blockchain, start_hash, end_hash);
 }
 
-struct block *giveme_blockchain_crawl_next_for_chain(struct blockchain* chain, int flags)
+struct block *giveme_blockchain_crawl_next_for_chain(struct blockchain *chain, int flags)
 {
     if (!chain->crawl.crawling)
     {
@@ -186,7 +238,7 @@ struct block *giveme_blockchain_back_safe()
     return block;
 }
 
-bool giveme_blockchain_verify_for_chain(struct blockchain* chain)
+bool giveme_blockchain_verify_for_chain(struct blockchain *chain)
 {
     giveme_blockchain_begin_crawl_for_chain(chain, NULL, NULL);
     struct block *block = giveme_blockchain_crawl_next_for_chain(chain, 0);
@@ -269,26 +321,26 @@ size_t giveme_blockchain_compute_block_count()
     return total_blocks;
 }
 
-size_t giveme_blockchain_block_count_for_chain(struct blockchain* chain)
+size_t giveme_blockchain_block_count_for_chain(struct blockchain *chain)
 {
     return chain->total;
 }
 
 size_t giveme_blockchain_block_count()
 {
-   return giveme_blockchain_block_count_for_chain(&blockchain);
+    return giveme_blockchain_block_count_for_chain(&blockchain);
 }
 
-struct blockchain* giveme_blockchain_create(size_t total_blocks)
+struct blockchain *giveme_blockchain_create(size_t total_blocks)
 {
-    struct blockchain* chain = calloc(1, sizeof(struct blockchain));
+    struct blockchain *chain = calloc(1, sizeof(struct blockchain));
     chain->block = calloc(total_blocks, sizeof(struct block));
     chain->total = 0;
     chain->max_blocks = total_blocks;
     return chain;
 }
 
-void giveme_blockchain_free(struct blockchain* chain)
+void giveme_blockchain_free(struct blockchain *chain)
 {
     free(chain->block);
     free(chain);
@@ -320,7 +372,7 @@ void giveme_blockchain_initialize()
     }
 }
 
-int giveme_block_verify_for_chain(struct blockchain* chain, struct block *block)
+int giveme_block_verify_for_chain(struct blockchain *chain, struct block *block)
 {
     struct block *last_block = giveme_blockchain_back_for_chain(chain);
     if (last_block && S_EQ(last_block->hash, block->hash))
@@ -348,7 +400,7 @@ int giveme_block_verify(struct block *block)
     return giveme_block_verify_for_chain(&blockchain, block);
 }
 
-int giveme_blockchain_add_block_for_chain(struct blockchain* chain, struct block *block)
+int giveme_blockchain_add_block_for_chain(struct blockchain *chain, struct block *block)
 {
     int res = giveme_block_verify(block);
     if (res < 0)
@@ -361,7 +413,7 @@ int giveme_blockchain_add_block_for_chain(struct blockchain* chain, struct block
 
 size_t giveme_blockchain_total_blocks_left(int index)
 {
-    return blockchain.total - (index+1);
+    return blockchain.total - (index + 1);
 }
 int giveme_blockchain_add_block(struct block *block)
 {

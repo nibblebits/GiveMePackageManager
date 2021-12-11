@@ -582,7 +582,10 @@ void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *pack
     {
         giveme_log("%s failed to create a transaction for the packet provided for IP %s\n", __FUNCTION__, giveme_connection_ip(connection));
     }
+
 }
+
+
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     switch (packet->type)
@@ -636,12 +639,26 @@ void giveme_network_packets_process()
     }
 }
 
+void giveme_network_make_block_if_possible()
+{
+    // Every 5 minutes we want to make a new block, lets see if its time.
+    // We will only make the block if we are the next elected.
+    size_t current_time_since_last_tick = time(NULL) % GIVEME_SECONDS_TO_MAKE_BLOCK;
+    // We give a leighway of five seconds in regards to the five minutes
+    // as sometimes theres delays right.
+    if (current_time_since_last_tick >= 0 && current_time_since_last_tick <= 5)
+    {
+        giveme_log("%s time to make a new block\n", __FUNCTION__);
+    }
+}
+
 int giveme_network_process_thread(struct queued_work *work)
 {
     while (1)
     {
         giveme_network_ping();
         giveme_network_packets_process();
+        giveme_network_make_block_if_possible();
         sleep(1);
     }
     return 0;

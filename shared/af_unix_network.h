@@ -30,13 +30,13 @@ struct network_af_unix_packet
         struct network_af_unix_publish_packet
         {
             char filename[PATH_MAX];
-            char package[PACKAGE_NAME_MAX];
+            char package[GIVEME_PACKAGE_NAME_MAX];
         } publish;
 
         struct network_af_unix_publish_response_packet
         {
             char filename[PATH_MAX];
-            char package[PACKAGE_NAME_MAX];
+            char package[GIVEME_PACKAGE_NAME_MAX];
             bool published;
         } publish_res;
 

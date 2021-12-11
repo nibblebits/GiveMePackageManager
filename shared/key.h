@@ -1,9 +1,10 @@
 #ifndef GIVEME_KEY_H
-#define GIVME_KEY_H
+#define GIVEME_KEY_H
 #include <stddef.h>
+#include "config.h"
 struct key
 {
-    char* key;
+    char key[GIVEME_MAX_KEY_LENGTH];
     size_t size;
 };
 

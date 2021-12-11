@@ -4,6 +4,8 @@
         "network.h": "c",
         "stdio.h": "c",
         "config.h": "c",
-        "string": "c"
+        "string": "c",
+        "memory_resource": "cpp",
+        "typeinfo": "c"
     }
 }
