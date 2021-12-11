@@ -395,7 +395,7 @@ void giveme_udp_network_send_my_block_count()
 {
     giveme_lock_chain();
     giveme_log("%s sending my block count to the network\n", __FUNCTION__);
-    pthread_mutex_lock(&network.tcp_lock);
+    pthread_mutex_lock(&network.ip_address_lock);
     struct sockaddr_in tcp_sock;
     // We want someone to connect to us so we can send our blockchain if needed
     int sock = giveme_tcp_network_listen(&tcp_sock);
@@ -424,13 +424,13 @@ void giveme_udp_network_send_my_block_count()
 out:
     close(client_s);
     close(sock);
-    pthread_mutex_unlock(&network.tcp_lock);
+    pthread_mutex_unlock(&network.ip_address_lock);
     giveme_unlock_chain();
 }
 void giveme_udp_network_announce()
 {
     int res = 0;
-    pthread_mutex_lock(&network.tcp_lock);
+    pthread_mutex_lock(&network.ip_address_lock);
     struct sockaddr_in tcp_sock;
     // We want someone to connect to us now once we send that packet
     int sock = giveme_tcp_network_listen(&tcp_sock);
@@ -470,7 +470,7 @@ void giveme_udp_network_announce()
 out:
     close(client_s);
     close(sock);
-    pthread_mutex_unlock(&network.tcp_lock);
+    pthread_mutex_unlock(&network.ip_address_lock);
 
 }
 
@@ -674,7 +674,7 @@ out:
 int giveme_network_request_blockchain()
 {
     int res = 0;
-    pthread_mutex_lock(&network.tcp_lock);
+    pthread_mutex_lock(&network.ip_address_lock);
 
     struct sockaddr_in tcp_sock;
     // We want someone to connect to us now once we send that packet
@@ -729,7 +729,7 @@ out_unlock_chain:
     giveme_unlock_chain();
 
 out:
-    pthread_mutex_unlock(&network.tcp_lock);
+    pthread_mutex_unlock(&network.ip_address_lock);
 
     close(sock);
     close(sock_cli);
@@ -1008,9 +1008,9 @@ void giveme_network_initialize()
         giveme_log("Failed to initialize queued_udp_packets_lock mutex\n");
     }
 
-    if (pthread_mutex_init(&network.tcp_lock, NULL) != 0)
+    if (pthread_mutex_init(&network.ip_address_lock, NULL) != 0)
     {
-        giveme_log("Failed to initialize tcp_lock mutex\n");
+        giveme_log("Failed to initialize ip_address_lock mutex\n");
     }
 
     giveme_network_load_ips();

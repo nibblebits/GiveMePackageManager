@@ -26,22 +26,6 @@ struct network_connection
     struct network_connection_data *data;
 };
 
-struct network
-{
-    // IP Addresses on the network vector of struct in_addr
-    struct vector *ip_addresses;
-
-    struct network_connection connections[GIVEME_TCP_SERVER_MAX_CONNECTIONS];
-    size_t total_connected;
-
-    // Locked when preforming TCP actions that must not conflict such as modiying
-    // the connection array
-    pthread_mutex_t tcp_lock;
-
-    struct sockaddr_in listen_address;
-    int listen_socket;
-};
-
 enum
 {
     GIVEME_NETWORK_TCP_PACKET_TYPE_PING,
@@ -59,11 +43,45 @@ struct giveme_tcp_packet
     } publish_package;
 };
 
+
+
+/**
+ * @brief A single transaction holds a packet and a creation time.
+ * These transactions will be added to blocks every five minutes.
+ */
+struct network_transaction
+{
+    struct giveme_tcp_packet packet;
+    time_t created;
+};
+
+struct network
+{
+    // IP Addresses on the network vector of struct in_addr
+    struct vector *ip_addresses;
+    pthread_mutex_t ip_address_lock;
+
+    struct network_connection connections[GIVEME_TCP_SERVER_MAX_CONNECTIONS];
+    size_t total_connected;
+
+    struct network_transactions
+    {
+        struct network_transaction* awaiting[GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK];
+        int total;
+        pthread_mutex_t lock;
+    } transactions;
+
+    // Locked when preforming TCP actions that must not conflict such as modiying
+    // the connection array
+
+    struct sockaddr_in listen_address;
+    int listen_socket;
+};
+
 void giveme_network_initialize();
 int giveme_network_listen();
 int giveme_network_connection_thread_start();
 int giveme_network_process_thread_start();
 void giveme_network_broadcast(struct giveme_tcp_packet *packet);
-
 
 #endif

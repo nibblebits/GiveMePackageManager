@@ -28,6 +28,56 @@ struct network network;
 int giveme_network_accept_thread(struct queued_work *work);
 int giveme_network_connection_thread(struct queued_work *work);
 int giveme_network_process_thread(struct queued_work *work);
+bool giveme_network_connection_connected(struct network_connection *connection);
+
+
+struct network_transaction** giveme_network_find_network_transaction_slot()
+{
+    for (int i = 0; i < GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK; i++)
+    {
+        if (!network.transactions.awaiting[i])
+        {
+            return &network.transactions.awaiting[i];
+        }
+    }
+
+    return NULL;
+}
+
+struct network_transaction* giveme_network_new_transaction()
+{
+    return calloc(1, sizeof(struct network_transaction));
+}
+
+int giveme_network_create_transaction_for_packet(struct giveme_tcp_packet* packet)
+{
+    int res = 0;
+    pthread_mutex_lock(&network.transactions.lock);
+    struct network_transaction** slot = giveme_network_find_network_transaction_slot();
+    if (!slot)
+    {
+        giveme_log("%s out of transaction slots cannot create transaction\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+
+    struct network_transaction* transaction = giveme_network_new_transaction();
+    memcpy(&transaction->packet, packet, sizeof(struct giveme_tcp_packet));
+    *slot = transaction;
+    network.transactions.total++;
+out:
+    pthread_mutex_unlock(&network.transactions.lock);
+    return res;
+}
+
+const char *giveme_connection_ip(struct network_connection *connection)
+{
+    if (!giveme_network_connection_connected(connection))
+        return NULL;
+
+    return inet_ntoa(connection->data->addr.sin_addr);
+}
 
 int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out, bool has_timeout)
 {
@@ -75,7 +125,7 @@ int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out, bool has_time
 
 bool giveme_network_connection_connected(struct network_connection *connection)
 {
-    return connection->data != NULL;
+    return connection && connection->data != NULL;
 }
 
 int giveme_network_accept_thread_start()
@@ -441,7 +491,7 @@ int giveme_network_connect()
     // this is because we can't risk it changing during this operation and we also
     // do not want to lock the entire function during this time consuming process of
     // connecting to 100s of IP addresses.
-    pthread_mutex_lock(&network.tcp_lock);
+    pthread_mutex_lock(&network.ip_address_lock);
     vector_set_peek_pointer(network.ip_addresses, 0);
     struct in_addr *ip_address = vector_peek(network.ip_addresses);
     struct in_addr ip_address_stack;
@@ -449,7 +499,7 @@ int giveme_network_connect()
     {
         ip_address_stack = *ip_address;
     }
-    pthread_mutex_unlock(&network.tcp_lock);
+    pthread_mutex_unlock(&network.ip_address_lock);
 
     while (ip_address)
     {
@@ -459,13 +509,13 @@ int giveme_network_connect()
         {
             giveme_log("%s connected to %s\n", __FUNCTION__, inet_ntoa(ip_address_stack));
         }
-        pthread_mutex_lock(&network.tcp_lock);
+        pthread_mutex_lock(&network.ip_address_lock);
         ip_address = vector_peek(network.ip_addresses);
         if (ip_address)
         {
             ip_address_stack = *ip_address;
         }
-        pthread_mutex_unlock(&network.tcp_lock);
+        pthread_mutex_unlock(&network.ip_address_lock);
     }
 
     return res;
@@ -484,6 +534,7 @@ int giveme_network_connection_thread(struct queued_work *work)
 void giveme_network_disconnect(struct network_connection *connection)
 {
     giveme_network_connection_data_free(connection->data);
+    network.total_connected--;
     connection->data = NULL;
 }
 
@@ -518,34 +569,38 @@ void giveme_network_ping()
     giveme_network_broadcast(&packet);
 }
 
-int giveme_network_connection_socket(struct network_connection* connection)
+int giveme_network_connection_socket(struct network_connection *connection)
 {
     return connection->data ? connection->data->sock : -1;
 }
 
-void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet* packet)
+void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
-    giveme_log("%s Publish package request for packet %s\n", __FUNCTION__, packet->publish_package.name);
-}
-void giveme_network_packet_process(struct giveme_tcp_packet *packet)
-{
-    switch(packet->type)
+    giveme_log("%s Publish package request for packet %s by %s\n", __FUNCTION__, packet->publish_package.name, giveme_connection_ip(connection));
+    int res = giveme_network_create_transaction_for_packet(packet);
+    if (res < 0)
     {
-        case GIVEME_NETWORK_TCP_PACKET_TYPE_PING:
+        giveme_log("%s failed to create a transaction for the packet provided for IP %s\n", __FUNCTION__, giveme_connection_ip(connection));
+    }
+}
+void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection)
+{
+    switch (packet->type)
+    {
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_PING:
         // We ignore pings, they are used to check peer is still here..
         break;
 
-        case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
-            giveme_network_packet_handle_publish_package(packet);
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
+        giveme_network_packet_handle_publish_package(packet, connection);
         break;
-
     }
 }
 void giveme_network_packets_process()
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-        struct network_connection* connection = &network.connections[i];
+        struct network_connection *connection = &network.connections[i];
         if (pthread_mutex_trylock(&connection->lock) < 0)
         {
             continue;
@@ -572,7 +627,7 @@ void giveme_network_packets_process()
                 {
                     giveme_log("%s failed to read packet even though data was supposed to be available\n", __FUNCTION__);
                 }
-                giveme_network_packet_process(&packet);
+                giveme_network_packet_process(&packet, connection);
             }
         } while (count > 0);
 
@@ -639,16 +694,23 @@ void giveme_network_initialize()
     int res = 0;
     memset(&network, 0, sizeof(struct network));
     network.ip_addresses = vector_create(sizeof(struct in_addr));
-    if (pthread_mutex_init(&network.tcp_lock, NULL) != 0)
+    if (pthread_mutex_init(&network.ip_address_lock, NULL) != 0)
     {
-        giveme_log("Failed to initialize tcp_lock mutex\n");
+        giveme_log("Failed to initialize ip_address_lock mutex\n");
         res = -1;
         goto out;
     }
 
-    pthread_mutex_lock(&network.tcp_lock);
+    if (pthread_mutex_init(&network.transactions.lock, NULL) != 0)
+    {
+        giveme_log("Failed to initialize network transaction mutex\n");
+        res = -1;
+        goto out;
+    }
+
+    pthread_mutex_lock(&network.ip_address_lock);
     giveme_network_load_ips();
-    pthread_mutex_unlock(&network.tcp_lock);
+    pthread_mutex_unlock(&network.ip_address_lock);
 
     giveme_network_initialize_connections();
 

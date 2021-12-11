@@ -14,13 +14,9 @@
 #define PACKAGE_NAME_MAX 256
 #define GIVEME_TOTAL_ZEROS_FOR_MINED_BLOCK 5
 #define GIVEME_IP_STRING_SIZE 17
-#define GIVEME_UDP_MAX_BROADCASTS_FOR_ANNOUNCMENT 10
-#define GIVEME_UDP_MAX_BROADCASTS_FOR_CHAIN_REQUEST 30
-#define GIVEME_UDP_PACKET_QUEUE_MAXIMUM_PACKETS 1024
 
-// After five seconds a packet in the queue will be considered dead and wont be processed
-// it will be discarded.
-#define GIVEME_UDP_PACKET_QUEUE_PACKET_EXPIRE_SECONDS 5
+// We allow a maximum of 1024 transactions per block
+#define GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK 3
 
 #define GIVEME_TCP_PORT 10287
 
