@@ -66,7 +66,7 @@ int giveme_blockchain_get_individual(struct key *key, struct blockchain_individu
                 published_key = &transaction->packet.publish_public_key;
 
                 // We found a public key packet does it match our key
-                if (memcmp(&published_key->pub_key, key, sizeof(key)) == 0)
+                if (strncmp(published_key->pub_key.key, key->key, sizeof(key->key)) == 0)
                 {
                     // Yep it matches this was when this key was first ever published
                     memcpy(&individual_out->key_data.key, &published_key->pub_key, sizeof(struct key));
@@ -85,7 +85,7 @@ int giveme_blockchain_get_individual(struct key *key, struct blockchain_individu
         block = giveme_blockchain_crawl_next(0);
     }
 
-    return -1;
+    return (individual_out->flags & GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN) ? 0 : -1;
 }
 off_t giveme_blockchain_index_for_block_for_chain(struct blockchain *chain, const char *hash)
 {
@@ -359,7 +359,7 @@ void giveme_blockchain_create_genesis_block()
     strncpy(key->pub_key.key, GIVEME_BLOCKCHAIN_GENESIS_KEY, sizeof(key->pub_key.key));
     genesis_block.data.nounce = atoi(GIVEME_BLOCKCHAIN_GENESIS_NOUNCE);
     strncpy(genesis_block.hash, GIVEME_BLOCKCHAIN_GENESIS_HASH, sizeof(genesis_block.hash));
-    int res = giveme_mine(&genesis_block);
+    int res = giveme_blockchain_add_block(&genesis_block);
     if (res < 0)
     {
         giveme_log("%s failed to add genesis block to chain\n", __FUNCTION__);
