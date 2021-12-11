@@ -3,6 +3,7 @@
         "types.h": "c",
         "network.h": "c",
         "stdio.h": "c",
-        "config.h": "c"
+        "config.h": "c",
+        "string": "c"
     }
 }

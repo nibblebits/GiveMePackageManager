@@ -16,18 +16,137 @@
 #include "misc.h"
 #include "config.h"
 
-char *public_key = NULL;
-char *private_key = NULL;
+struct key public_key = {};
+struct key private_key = {};
 
-const char *giveme_public_key()
+struct key* giveme_public_key()
 {
-    return public_key;
+    return &public_key;
 }
 
-const char *giveme_private_key()
+struct key* giveme_private_key()
 {
-    return private_key;
+    return &private_key;
 }
+
+// void Rsa::decrypt_public(const std::string &pub_key, const std::string &input, std::string &out)
+// {
+//     // Reset out to nothing
+//     out = "";
+
+//     RSA *pb_rsa = NULL;
+//     RSA *p_rsa = NULL;
+//     EVP_PKEY *evp_pbkey = NULL;
+//     EVP_PKEY *evp_pkey = NULL;
+
+//     BIO *pkeybio = NULL;
+//     pkeybio = BIO_new_mem_buf((void *)pub_key.c_str(), pub_key.size());
+//     if (pkeybio == NULL)
+//     {
+//         throw std::logic_error("decrypt_public(): Problem allocating buffer");
+//     }
+
+//     p_rsa = PEM_read_bio_RSAPublicKey(pkeybio, &p_rsa, NULL, NULL);
+//     if (p_rsa == NULL)
+//     {
+//         char buffer[120];
+//         ERR_error_string(ERR_get_error(), buffer);
+//         throw std::logic_error("decrypt_public(): " + std::string(buffer, sizeof(buffer)));
+//     }
+
+//     std::unique_ptr<char[]> decrypted = std::make_unique<char[]>(RSA_size(p_rsa));
+//     memset(decrypted.get(), 0, RSA_size(p_rsa));
+
+//     int decrypt_len;
+//     if ((decrypt_len = RSA_public_decrypt(input.size(), (unsigned char *)input.c_str(),
+//                                           (unsigned char *)decrypted.get(), p_rsa, RSA_PKCS1_PADDING)) == -1)
+//     {
+//         throw std::logic_error("decrypt_public(): problem encrypting with private key");
+//     }
+
+//     out = std::string(decrypted.get(), decrypt_len);
+//     BIO_free(pkeybio);
+// }
+
+const char* decrypt_public(struct key* key, const char* input, size_t input_len, size_t* out_size)
+{
+
+    RSA *pb_rsa = NULL;
+    RSA *p_rsa = NULL;
+    EVP_PKEY *evp_pbkey = NULL;
+    EVP_PKEY *evp_pkey = NULL;
+
+    BIO *pkeybio = NULL;
+    pkeybio = BIO_new_mem_buf((void *)key->key, key->size);
+    if (pkeybio == NULL)
+    {
+        giveme_log("encrypt_public(): Problem allocating buffer");
+    }
+
+    p_rsa = PEM_read_bio_RSAPublicKey(pkeybio, &p_rsa, NULL, NULL);
+    if (p_rsa == NULL)
+    {
+        char buffer[120];
+        ERR_error_string(ERR_get_error(), buffer);
+        return NULL;
+    }
+
+    size_t size = RSA_size(p_rsa);
+    *out_size = size;
+
+    char* encrypt = calloc(1, size);
+
+    int encrypt_len;
+    if ((encrypt_len = RSA_public_decrypt(input_len, (unsigned char *)input,
+                                           (unsigned char *)encrypt, p_rsa, RSA_PKCS1_PADDING)) == -1)
+    {
+        giveme_log("decrypt_public(): problem encrypting with public key");
+    }
+
+    BIO_free(pkeybio);
+    return encrypt;
+}
+
+
+const char* encrypt_private(const char* input, size_t input_len, size_t* size_out)
+{
+
+    RSA *pb_rsa = NULL;
+    RSA *p_rsa = NULL;
+    EVP_PKEY *evp_pbkey = NULL;
+    EVP_PKEY *evp_pkey = NULL;
+
+    BIO *pkeybio = NULL;
+    pkeybio = BIO_new_mem_buf((void *)private_key.key, private_key.size);
+    if (pkeybio == NULL)
+    {
+        giveme_log("encrypt_private(): Problem allocating buffer");
+    }
+
+    p_rsa = PEM_read_bio_RSAPrivateKey(pkeybio, &p_rsa, NULL, NULL);
+    if (p_rsa == NULL)
+    {
+        char buffer[120];
+        ERR_error_string(ERR_get_error(), buffer);
+        return NULL;
+    }
+
+    size_t size = RSA_size(p_rsa);
+    *size_out = size;
+
+    char* encrypt = calloc(1, size);
+
+    int encrypt_len;
+    if ((encrypt_len = RSA_private_encrypt(input_len, (unsigned char *)input,
+                                           (unsigned char *)encrypt, p_rsa, RSA_PKCS1_PADDING)) == -1)
+    {
+        giveme_log("encrypt_private(): problem encrypting with private key");
+    }
+
+    BIO_free(pkeybio);
+    return encrypt;
+}
+
 
 const char *giveme_private_key_filepath()
 {
@@ -147,11 +266,12 @@ void giveme_load_public_key()
     size_t size = ftell(fp);
     rewind(fp);
 
-    public_key = calloc(1, size + 1);
-    if (fread(public_key, size, 1, fp) != 1)
+    public_key.key = calloc(1, size + 1);
+    if (fread(public_key.key, size, 1, fp) != 1)
     {
         giveme_log("Failed to read public key file\n");
     }
+    public_key.size = size;
 }
 
 void giveme_load_private_key()
@@ -167,11 +287,13 @@ void giveme_load_private_key()
     size_t size = ftell(fp);
     rewind(fp);
 
-    private_key = calloc(1, size + 1);
-    if (fread(private_key, size, 1, fp) != 1)
+    private_key.key = calloc(1, size + 1);
+    if (fread(private_key.key, size, 1, fp) != 1)
     {
         giveme_log("Failed to read private key file\n");
     }
+
+    private_key.size = size;
 }
 
 void giveme_load_keypair()
@@ -183,4 +305,5 @@ void giveme_load_keypair()
 
     giveme_load_public_key();
     giveme_load_private_key();
+
 }
