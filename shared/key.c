@@ -29,45 +29,6 @@ struct key* giveme_private_key()
     return &private_key;
 }
 
-// void Rsa::decrypt_public(const std::string &pub_key, const std::string &input, std::string &out)
-// {
-//     // Reset out to nothing
-//     out = "";
-
-//     RSA *pb_rsa = NULL;
-//     RSA *p_rsa = NULL;
-//     EVP_PKEY *evp_pbkey = NULL;
-//     EVP_PKEY *evp_pkey = NULL;
-
-//     BIO *pkeybio = NULL;
-//     pkeybio = BIO_new_mem_buf((void *)pub_key.c_str(), pub_key.size());
-//     if (pkeybio == NULL)
-//     {
-//         throw std::logic_error("decrypt_public(): Problem allocating buffer");
-//     }
-
-//     p_rsa = PEM_read_bio_RSAPublicKey(pkeybio, &p_rsa, NULL, NULL);
-//     if (p_rsa == NULL)
-//     {
-//         char buffer[120];
-//         ERR_error_string(ERR_get_error(), buffer);
-//         throw std::logic_error("decrypt_public(): " + std::string(buffer, sizeof(buffer)));
-//     }
-
-//     std::unique_ptr<char[]> decrypted = std::make_unique<char[]>(RSA_size(p_rsa));
-//     memset(decrypted.get(), 0, RSA_size(p_rsa));
-
-//     int decrypt_len;
-//     if ((decrypt_len = RSA_public_decrypt(input.size(), (unsigned char *)input.c_str(),
-//                                           (unsigned char *)decrypted.get(), p_rsa, RSA_PKCS1_PADDING)) == -1)
-//     {
-//         throw std::logic_error("decrypt_public(): problem encrypting with private key");
-//     }
-
-//     out = std::string(decrypted.get(), decrypt_len);
-//     BIO_free(pkeybio);
-// }
-
 const char* decrypt_public(struct key* key, const char* input, size_t input_len, size_t* out_size)
 {
 
