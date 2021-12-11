@@ -66,9 +66,9 @@ int main(int argc, char *argv[])
 	initialize();
 	giveme_thread_pool_start();
 
-	giveme_network_listen();
-	giveme_network_connection_thread_start();
-	giveme_network_process_thread_start();
+	// giveme_network_listen();
+	// giveme_network_connection_thread_start();
+	// giveme_network_process_thread_start();
 	check_my_key();
 
 	giveme_af_unix_listen();
