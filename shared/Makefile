@@ -1,4 +1,4 @@
-OBJECTS=./build/log.o ./build/af_unix_network.o ./build/network.o ./build/blockchain.o ./build/package.o ./build/sha256.o ./build/tpool.o ./build/vector.o
+OBJECTS=./build/log.o ./build/af_unix_network.o ./build/network.o ./build/blockchain.o ./build/package.o ./build/sha256.o ./build/tpool.o ./build/key.o ./build/misc.o ./build/vector.o
 INCLUDES= -I ./
 ADDITIONAL_FLAGS= -g
 all: ${OBJECTS}
@@ -26,6 +26,12 @@ all: ${OBJECTS}
 
 ./build/tpool.o:./tpool.c
 	gcc ${INCLUDES} ./tpool.c -c ${ADDITIONAL_FLAGS} -o ./build/tpool.o 
+
+./build/key.o:./key.c
+	gcc ${INCLUDES} ./key.c -c ${ADDITIONAL_FLAGS} -o ./build/key.o 
+
+./build/misc.o:./misc.c
+	gcc ${INCLUDES} ./misc.c -c ${ADDITIONAL_FLAGS} -o ./build/misc.o 
 
 ./build/vector.o:./vector.c
 	gcc ${INCLUDES} ./vector.c -c ${ADDITIONAL_FLAGS} -o ./build/vector.o 

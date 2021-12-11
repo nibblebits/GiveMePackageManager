@@ -12,6 +12,7 @@
 #include "network.h"
 #include "tpool.h"
 #include "blockchain.h"
+#include "key.h"
 
 void initialize()
 {
@@ -37,6 +38,7 @@ void initialize()
 	giveme_thread_pool_init(GIVEME_TOTAL_THREADS);
 	giveme_blockchain_initialize();
 	giveme_network_initialize();
+	giveme_load_keypair();
 }
 
 int main(int argc, char *argv[])
