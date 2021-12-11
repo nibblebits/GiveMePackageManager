@@ -25,9 +25,24 @@
 #define GIVEME_MAX_KEY_LENGTH 4096
 
 // We allow a maximum of 1024 transactions per block
-#define GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK 1024
+#define GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK 16
 
 #define GIVEME_VALIDATION_MINING_REWARD 0.05
+
+// Genesis key will be added as a first block when ever anyone first downloads the software
+// A new public key block will automatically be created upon starting the software for
+// the first time, with this gensis key being that block.
+#define GIVEME_BLOCKCHAIN_GENESIS_KEY "-----BEGIN RSA PUBLIC KEY----- \
+MIIBCgKCAQEAnvZrnzUVpxhJbCJZ/lY0/+2qqBS/mrJH+HFu5kDavqihF46Mm2FB  \
+T21QCp95h6m7D6ovEJZodXEd8QP5pBEvAoWUnw0t1xMlySLY6tDD1HN1u5kFptgA \
+HEOqAPZA/rsmeRysu0291WSn56lkaVEs4+PAbOV+a7N3ECCaKuJaSwFsGLskiOKi \
+AIIrZBLAkzK6r0qX+I3KbMbcb0FFMAKpIuLAAivrljmYEBdsxkTxXJ2DVujEc7oJ \
+n0EKJ4j377zzuXv4XwWxbJ1sYFhUrRx1lFdrx3T8KiVJ8Yv6F3YHwWXZEW4E5++Y \
+Wiqbf7ZAeToe7zD78/4lBlB1Y0rGzXPTHQIDAQAB \
+-----END RSA PUBLIC KEY-----"
+
+#define GIVEME_BLOCKCHAIN_GENESIS_HASH "0ee976a68948529107f4496fabf220b3d192e8e79340f5b025796f5741261d9d"
+#define GIVEME_BLOCKCHAIN_GENESIS_NOUNCE "5375715"
 
 #define GIVEME_TCP_PORT 10287
 

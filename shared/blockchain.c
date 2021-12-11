@@ -346,6 +346,26 @@ void giveme_blockchain_free(struct blockchain *chain)
     free(chain);
 }
 
+void giveme_blockchain_create_genesis_block()
+{
+    giveme_log("%s creating genesis block for first time blockchain use\n", __FUNCTION__);
+    struct block genesis_block;
+    memset(&genesis_block, 0, sizeof(genesis_block));
+    genesis_block.data.transactions.total = 1;
+
+    struct giveme_tcp_packet_publish_key* key = &genesis_block.data.transactions.transactions[0].packet.publish_public_key;
+    strncpy(key->name, "Genesis Individual", sizeof(key->name));
+    key->pub_key.size = strlen(GIVEME_BLOCKCHAIN_GENESIS_KEY);
+    strncpy(key->pub_key.key, GIVEME_BLOCKCHAIN_GENESIS_KEY, sizeof(key->pub_key.key));
+    genesis_block.data.nounce = atoi(GIVEME_BLOCKCHAIN_GENESIS_NOUNCE);
+    strncpy(genesis_block.hash, GIVEME_BLOCKCHAIN_GENESIS_HASH, sizeof(genesis_block.hash));
+    int res = giveme_blockchain_add_block(&genesis_block);
+    if (res < 0)
+    {
+        giveme_log("%s failed to add genesis block to chain\n", __FUNCTION__);
+    }
+}
+
 void giveme_blockchain_initialize()
 {
     bool blockchain_exists = giveme_blockchain_exists();
@@ -369,6 +389,13 @@ void giveme_blockchain_initialize()
     if (pthread_mutex_init(&blockchain_mine_lock, NULL) != 0)
     {
         giveme_log("Failed to initialize blockchain mine lock mutex\n");
+    }
+
+    if (!blockchain_exists)
+    {
+        // We had no blockchain when this function was called, therefore
+        // lets create the genesis block
+        giveme_blockchain_create_genesis_block();
     }
 }
 
@@ -426,7 +453,6 @@ int giveme_blockchain_add_block(struct block *block)
 
 int giveme_mine(struct block *block)
 {
-    giveme_lock_chain(&blockchain_mine_lock);
 
     // Let's set the previous hash
     struct block *previous_block = giveme_blockchain_back();
@@ -450,6 +476,5 @@ int giveme_mine(struct block *block)
     }
 
 out:
-    giveme_unlock_chain(&blockchain_mine_lock);
     return res;
 }

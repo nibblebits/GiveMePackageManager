@@ -117,7 +117,7 @@ void giveme_blockchain_load() NO_THREAD_SAFETY;
 
 int giveme_blockchain_begin_crawl(const char *start_hash, const char *end_hash) NO_THREAD_SAFETY;
 struct block *giveme_blockchain_crawl_next(int flags) NO_THREAD_SAFETY;
-int giveme_mine(struct block *block) USES_LOCKS;
+int giveme_mine(struct block *block) NO_THREAD_SAFETY;
 
 struct blockchain *giveme_blockchain_create(size_t total_blocks) NO_THREAD_SAFETY;
 void giveme_blockchain_free(struct blockchain *chain) NO_THREAD_SAFETY;
