@@ -370,6 +370,8 @@ bool giveme_blockchain_are_we_known()
 
 void giveme_blockchain_handle_added_block(struct block *block)
 {
+    giveme_log("%s handling block with %i transactions.\n", __FUNCTION__, block->data.transactions.total);
+
     // Get our public key.
     struct key *key = giveme_public_key();
     struct block_transaction *transaction;
@@ -507,8 +509,11 @@ int giveme_blockchain_add_block_for_chain(struct blockchain *chain, struct block
     if (res < 0)
         return res;
 
-    chain->block[blockchain.total] = *block;
+    int index = blockchain.total;
+    chain->block[index] = *block;
     chain->total++;
+
+    giveme_blockchain_handle_added_block(block);
     return res;
 }
 
