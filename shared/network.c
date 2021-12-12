@@ -490,12 +490,13 @@ int giveme_tcp_network_connect(struct in_addr addr, int port, int flags)
 
 int giveme_network_connect_to_ip(struct in_addr ip)
 {
+    giveme_log("%s connecting to IP address\n", __FUNCTION__);
     // We are already connected to this client.
     if (giveme_network_ip_connected(&ip))
     {
         return 1;
-    }
-
+    }   
+    giveme_log("%s test\n", __FUNCTION__);
     return giveme_tcp_network_connect(ip, GIVEME_TCP_PORT, GIVEME_CONNECT_FLAG_ADD_TO_CONNECTIONS) < 0 ? -1 : 0;
 }
 int giveme_network_connect()
@@ -564,7 +565,10 @@ void giveme_network_broadcast(struct giveme_tcp_packet *packet)
         }
 
         if (!network.connections[i].data)
+        {
+            pthread_mutex_unlock(&network.connections[i].lock);
             continue;
+        }
 
         if (giveme_tcp_send_packet(&network.connections[i], packet) < 0)
         {
@@ -868,8 +872,9 @@ void giveme_network_update_chain()
     struct giveme_tcp_packet update_chain_packet;
     update_chain_packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN;
     memcpy(update_chain_packet.update_chain.last_hash, giveme_blockchain_back()->hash, sizeof(update_chain_packet.update_chain.last_hash));
-    giveme_network_broadcast(&update_chain_packet);
     giveme_unlock_chain();
+    giveme_network_broadcast(&update_chain_packet);
+
 }
 
 int giveme_network_make_block_if_possible()
