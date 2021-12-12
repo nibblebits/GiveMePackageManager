@@ -419,6 +419,11 @@ void giveme_blockchain_load_data()
 
 }
 
+size_t giveme_blockchain_max_allowed_blocks_for_now()
+{
+    return (time(NULL) - GIVEME_BLOCK_BEGIN_TIMESTAMP) / GIVEME_SECONDS_TO_MAKE_BLOCK;
+}
+
 void giveme_blockchain_create_genesis_block()
 {
     giveme_log("%s creating genesis block for first time blockchain use\n", __FUNCTION__);

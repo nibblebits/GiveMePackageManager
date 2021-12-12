@@ -38,7 +38,13 @@
 #define GIVEME_BLOCKCHAIN_GENESIS_HASH "024420eae40f605231852b6a1f055cf503b4b0cc381406f52c4a283d552c0349"
 #define GIVEME_BLOCKCHAIN_GENESIS_NOUNCE "15733487"
 
+// Unix timestamp from when blocks are allowed to be added to the chain
+// We can use this timestamp to know how long the blockchain should be.
+// If an attacker sent a longer chain than mathematically allowed then we know its fraud.
+#define GIVEME_BLOCK_BEGIN_TIMESTAMP 1639333570
+
 #define GIVEME_TCP_PORT 10287
+#define GIVEME_TCP_DATA_EXCHANGE_PORT 10288
 
 // We only ever turn on TCP when we are expecting someone, therefore we wont allow any queuing of any kind
 // first to chat with us gets priority
@@ -47,6 +53,8 @@
 #define GIVEME_NETWORK_TCP_CONNECT_TIMEOUT_SECONDS 2
 // 30 seconds waiting on a recv or send and we will timeout.
 #define GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS 30
+
+#define GIVEME_NETWORK_TCP_DATA_EXCHANGE_LISTEN_TIMEOUT 5
 
 // Blockchain will resize its self after 1024 blocks, and it will resize to +1024 blocks each time
 #define BLOCKCHAIN_RESIZE_TOTAL_BLOCKS 1024

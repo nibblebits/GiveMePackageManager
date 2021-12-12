@@ -193,4 +193,13 @@ bool giveme_blockchain_are_we_known();
  * @return struct key* The verifier key
  */
 struct key *giveme_blockchain_get_verifier_key();
+
+/**
+ * @brief Returns the maximum number of blocks the blockchain is allowed  to have 
+ *  at the date and time right now. This function can be used to prevent people making illegal chains
+ * 
+ * @return size_t 
+ */
+size_t giveme_blockchain_max_allowed_blocks_for_now();
+
 #endif

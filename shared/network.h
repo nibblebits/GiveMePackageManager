@@ -13,6 +13,11 @@
 #define GIVEME_RECV_PACKET_UNEXPECTED -1
 #define GIVEME_RECV_PACKET_WRONG_CHAIN -2
 
+enum
+{
+    GIVEME_CONNECT_FLAG_ADD_TO_CONNECTIONS = 0b00000001
+};
+
 struct network_connection_data
 {
     int sock;
@@ -33,7 +38,9 @@ enum
     GIVEME_NETWORK_TCP_PACKET_TYPE_PING,
     GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE,
     GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY,
-    GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK
+    GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK,
+    GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN,
+    GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE
 };
 
 struct block block;
@@ -55,11 +62,28 @@ struct giveme_tcp_packet
             char name[GIVEME_KEY_NAME_MAX];
         } publish_public_key;
 
-
         struct giveme_tcp_packet_verified_block
         {
             struct block block;
         } verified_block;
+
+        struct giveme_tcp_packet_update_chain
+        {
+            // The last known hash in our blockchain
+            char last_hash[SHA256_STRING_LENGTH];
+        } update_chain;
+
+        struct giveme_tcp_packet_update_chain_response
+        {
+            // The total blocks that need to be received before the chain is updated.
+            size_t blocks_left_to_end;
+
+            //  Last hash of this blockchain
+            char last_hash[SHA256_STRING_LENGTH];
+
+            // The port the receiver should connect to if they want to receive the chain
+            int data_port;
+        } update_chain_response;
 
         // In case we want to add special packets in the future
         // we should reserve some data in the tcp packet
@@ -110,5 +134,6 @@ int giveme_network_listen();
 int giveme_network_connection_thread_start();
 int giveme_network_process_thread_start();
 void giveme_network_broadcast(struct giveme_tcp_packet *packet);
+void giveme_network_update_chain();
 
 #endif
