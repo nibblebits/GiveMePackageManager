@@ -217,6 +217,7 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
         res = write(client, ptr, amount);
         if (res < 0)
         {
+            printf("%s issue sending bytes err=%i\n", __FUNCTION__, res);
             return res;
         }
         amount_left -= res;
