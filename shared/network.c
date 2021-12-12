@@ -663,6 +663,9 @@ void giveme_network_packets_process()
 int giveme_network_create_block_transaction_for_network_transaction(struct network_transaction *transaction, struct block_transaction *transaction_out)
 {
     int res = 0;
+
+    // No transaction provided? then just return zero.
+
     switch (transaction->packet.type)
     {
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
@@ -687,7 +690,7 @@ int giveme_network_make_block_for_transactions(struct network_transactions *tran
     int res = 0;
     memset(block_out, 0, sizeof(struct block));
     block_out->data.transactions.total = transactions->total;
-    for (int i = 0; i < GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK; i++)
+    for (int i = 0; i < transactions->total; i++)
     {
         int res = giveme_network_create_block_transaction_for_network_transaction(transactions->awaiting[i], &block_out->data.transactions.transactions[i]);
         if (res < 0)
