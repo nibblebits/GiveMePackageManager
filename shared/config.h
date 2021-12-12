@@ -34,17 +34,9 @@
 // Genesis key will be added as a first block when ever anyone first downloads the software
 // A new public key block will automatically be created upon starting the software for
 // the first time, with this gensis key being that block.
-#define GIVEME_BLOCKCHAIN_GENESIS_KEY "-----BEGIN RSA PUBLIC KEY-----\n\
-MIIBCgKCAQEAqmDsTGxv0fpg0YCrxcof9cYsz81XAmTNLjzTqBu11Bmqd7WDFdgx\n\
-qOSxy5EHjzef4+lm4mpZ4aYsjx7zzZyBc7ZaBTTDzD+ZW3jbbwSnqHwBNuLMTQrf\n\
-+fdGgAxa3cUzZK192qqye7m58CvXeYE3UpUH6cmBmaaaGzTcRQ2DmVY+FAI733r2\n\
-rzhHqXFlNmAA+3O+shD2aEwBrWdIR7bE4d2/KJVg0D2zFQ7vzy16DI4z1Nk1u4Xt\n\
-vuRe66zDfJMnN6tB0p5G4eRABQ+35aACZJXaFJFLB++CCNsxVz+a3yHTiA1dWIIa\n\
-PI0ikjhY9w2vyiejpLDqR+o+65GdjjGNhQIDAQAB\n\
------END RSA PUBLIC KEY-----\n"
-
-#define GIVEME_BLOCKCHAIN_GENESIS_HASH "0867f89f73dc43ff3eb49a62eed3ed642a33a3a7bc5eeec26a7a51d4f9a14260"
-#define GIVEME_BLOCKCHAIN_GENESIS_NOUNCE "5274417"
+#define GIVEME_BLOCKCHAIN_GENESIS_KEY "FFFF39FFFF08FF19FF2A27FFFF00FFFFFFFFFFFFFF6B73FF6945173222FFFF2E"
+#define GIVEME_BLOCKCHAIN_GENESIS_HASH "024420eae40f605231852b6a1f055cf503b4b0cc381406f52c4a283d552c0349"
+#define GIVEME_BLOCKCHAIN_GENESIS_NOUNCE "15733487"
 
 #define GIVEME_TCP_PORT 10287
 
