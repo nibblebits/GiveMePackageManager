@@ -117,7 +117,7 @@ int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out, int timeout_s
             return -1;
         }
     }
-    
+
     // Binding newly created socket to given IP
     if ((bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
     {
@@ -130,8 +130,6 @@ int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out, int timeout_s
         giveme_log("TCP Server Listen failed...\n");
         return -1;
     }
-
-
 
     *server_sock_out = servaddr;
     return sockfd;
@@ -361,6 +359,8 @@ struct network_connection *giveme_network_connection_find_slot(pthread_mutex_t *
             // Since we found a free slot we expect the caller to unlock the mutex
             // we tell the caller what the lock is so they know they have to unlock it.
             *lock_to_unlock = &network.connections[i].lock;
+            pthread_mutex_unlock(&network.connections[i].lock);
+
             return &network.connections[i];
         }
         pthread_mutex_unlock(&network.connections[i].lock);
@@ -664,7 +664,7 @@ void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet,
 
         int server_sock = res;
 
-        if (pthread_mutex_lock(&connection->lock) < 0)
+        if (c(&connection->lock) < 0)
         {
             giveme_log("%s could not lock connection\n", __FUNCTION__);
         }
@@ -1010,7 +1010,6 @@ void giveme_network_initialize()
     pthread_mutex_unlock(&network.ip_address_lock);
 
     giveme_network_initialize_connections();
-
 
     // To give some time for the IP's to be added before we get the most up to date blockchain
     // We will set the last request time so that it will trigger in 30 seconds
