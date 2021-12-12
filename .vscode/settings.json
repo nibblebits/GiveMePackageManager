@@ -7,6 +7,7 @@
         "string": "c",
         "memory_resource": "cpp",
         "typeinfo": "c",
-        "blockchain.h": "c"
+        "blockchain.h": "c",
+        "string_view": "c"
     }
 }

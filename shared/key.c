@@ -160,60 +160,111 @@ int giveme_write_public_key(const char *key, size_t size)
     fclose(f);
     return res;
 }
+// int generate_key()
+// {
+
+//     RSA *keypair = NULL;
+//     BIO *bp_public = NULL, *bp_private = NULL;
+
+//     unsigned long e = RSA_F4;
+
+//     BIGNUM *bne = BN_new();
+//     int ret = BN_set_word(bne, e);
+//     if (ret != 1)
+//     {
+//         return -1;
+//     }
+
+//     keypair = RSA_new();
+
+//     ret = RSA_generate_key_ex(keypair, 2048, bne, NULL);
+
+//     BIO *pri = BIO_new(BIO_s_mem());
+//     BIO *pub = BIO_new(BIO_s_mem());
+
+//     PEM_write_bio_RSAPrivateKey(pri, keypair, NULL, NULL, 0, NULL, NULL);
+//     PEM_write_bio_RSAPublicKey(pub, keypair);
+
+//     size_t pri_len = BIO_pending(pri);
+//     size_t pub_len = BIO_pending(pub);
+
+//     char pri_key[pri_len + 1];
+//     char pub_key[pub_len + 1];
+//     bzero(pri_key, sizeof(pri_key));
+//     bzero(pub_key, sizeof(pub_key));
+
+//     BIO_read(pri, pri_key, pri_len);
+//     BIO_read(pub, pub_key, pub_len);
+
+//     giveme_log("Generated RSA keypair for first time use\n");
+//     int res = 0;
+//     res = giveme_write_private_key(pri_key, pri_len);
+//     if (res < 0)
+//     {
+//         giveme_log("Failed to write private key to disk\n");
+//     }
+
+//     res = giveme_write_public_key(pub_key, pub_len);
+//     if (res < 0)
+//     {
+//         giveme_log("Failed to write public key to disk\n");
+//     }
+
+//     giveme_log("Public key: %s\n Private key:%s\n", pub_key, pri_key);
+//     giveme_log("Private key at: %s\n", giveme_private_key_filepath());
+// }
+
 int generate_key()
 {
+    EVP_PKEY *pkey = NULL;
+    EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_X25519, NULL);
+    EVP_PKEY_keygen_init(pctx);
+    EVP_PKEY_keygen(pctx, &pkey);
 
-    RSA *keypair = NULL;
-    BIO *bp_public = NULL, *bp_private = NULL;
-
-    unsigned long e = RSA_F4;
-
-    BIGNUM *bne = BN_new();
-    int ret = BN_set_word(bne, e);
-    if (ret != 1)
+    char pub_key[32] = {};
+    size_t pub_allocated_length = sizeof(pub_key);
+    int res = EVP_PKEY_get_raw_public_key(pkey, pub_key, &pub_allocated_length);
+    if (!res)
     {
-        return -1;
+        giveme_log("%s failed to read public key during generation\n", __FUNCTION__);
     }
+    assert(pub_allocated_length == sizeof(pub_key));
 
-    keypair = RSA_new();
+    char pub_key_hexed[65] = {};
+    bin2hex(pub_key, sizeof(pub_key), pub_key_hexed);
 
-    ret = RSA_generate_key_ex(keypair, 2048, bne, NULL);
+    char pri_key[32] = {};
+    size_t pri_allocated_length = sizeof(pri_key);
+    res = EVP_PKEY_get_raw_private_key(pkey, pri_key, &pri_allocated_length);
+    if (!res)
+    {
+        giveme_log("%s failed to read private key during generation\n", __FUNCTION__);
+    }
+    assert(pri_allocated_length == sizeof(pri_key));
 
-    BIO *pri = BIO_new(BIO_s_mem());
-    BIO *pub = BIO_new(BIO_s_mem());
+    char pri_key_hexed[65] = {};
+    bin2hex(pri_key, sizeof(pri_key), pri_key_hexed);
 
-    PEM_write_bio_RSAPrivateKey(pri, keypair, NULL, NULL, 0, NULL, NULL);
-    PEM_write_bio_RSAPublicKey(pub, keypair);
+    EVP_PKEY_CTX_free(pctx);
 
-    size_t pri_len = BIO_pending(pri);
-    size_t pub_len = BIO_pending(pub);
+    giveme_log("%s created new private/public keypair\n", __FUNCTION__);
+    giveme_log("public key=%s\nprivate_key=%s\n", pub_key_hexed, pri_key_hexed);
 
-    char pri_key[pri_len + 1];
-    char pub_key[pub_len + 1];
-    bzero(pri_key, sizeof(pri_key));
-    bzero(pub_key, sizeof(pub_key));
-
-    BIO_read(pri, pri_key, pri_len);
-    BIO_read(pub, pub_key, pub_len);
-
-    giveme_log("Generated RSA keypair for first time use\n");
-    int res = 0;
-    res = giveme_write_private_key(pri_key, pri_len);
+    giveme_log("Writing keys to file\n");
+    res = giveme_write_private_key(pri_key_hexed, sizeof(pri_key_hexed));
     if (res < 0)
     {
         giveme_log("Failed to write private key to disk\n");
     }
 
-    res = giveme_write_public_key(pub_key, pub_len);
+    res = giveme_write_public_key(pub_key_hexed, sizeof(pub_key_hexed));
     if (res < 0)
     {
         giveme_log("Failed to write public key to disk\n");
     }
 
-    giveme_log("Public key: %s\n Private key:%s\n", pub_key, pri_key);
-    giveme_log("Private key at: %s\n", giveme_private_key_filepath());
+    giveme_log("find saved private key here: %s\n", giveme_private_key_filepath());
 }
-
 void giveme_load_public_key()
 {
     memset(&public_key, 0, sizeof(public_key));
@@ -228,7 +279,7 @@ void giveme_load_public_key()
     size_t size = ftell(fp);
     rewind(fp);
 
-    assert(size < sizeof(public_key.key));
+    assert(size <= sizeof(public_key.key));
     if (fread(public_key.key, size, 1, fp) != 1)
     {
         giveme_log("Failed to read public key file\n");
@@ -251,7 +302,7 @@ void giveme_load_private_key()
     size_t size = ftell(fp);
     rewind(fp);
 
-    assert(size < sizeof(private_key.key));
+    assert(size <= sizeof(private_key.key));
 
     if (fread(private_key.key, size, 1, fp) != 1)
     {

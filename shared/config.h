@@ -23,7 +23,8 @@
 #define GIVEME_SECONDS_TO_MAKE_BLOCK 60
 
 #define GIVEME_MINIMUM_TCP_PACKET_SIZE 1024
-#define GIVEME_MAX_KEY_LENGTH 4096
+// 64 bytes for hashed key then +1 for null terminator
+#define GIVEME_MAX_KEY_LENGTH 65
 
 // We allow a maximum of 1024 transactions per block
 #define GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK 16
@@ -53,7 +54,7 @@ PI0ikjhY9w2vyiejpLDqR+o+65GdjjGNhQIDAQAB\n\
 // If we have no client accepted or message within 2 seconds we will drop the TCP connection
 #define GIVEME_NETWORK_TCP_CONNECT_TIMEOUT_SECONDS 2
 // 30 seconds waiting on a recv or send and we will timeout.
-#define GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS 7
+#define GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS 30
 
 // Blockchain will resize its self after 1024 blocks, and it will resize to +1024 blocks each time
 #define BLOCKCHAIN_RESIZE_TOTAL_BLOCKS 1024
