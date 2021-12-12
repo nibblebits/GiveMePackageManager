@@ -79,7 +79,7 @@ const char *giveme_connection_ip(struct network_connection *connection)
 
 int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out, int timeout_seconds, int port, int max_connections)
 {
-    int sockfd, connfd, len;
+    int sockfd, len;
     struct sockaddr_in servaddr, cli;
 
     // socket create and verification
@@ -104,20 +104,6 @@ int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out, int timeout_s
         return -1;
     }
 
-    if (timeout_seconds)
-    {
-        struct timeval timeout;
-        timeout.tv_sec = timeout_seconds;
-        timeout.tv_usec = 0;
-
-        if (setsockopt(connfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
-                       sizeof timeout) < 0)
-        {
-            giveme_log("Failed to set socket timeout\n");
-            return -1;
-        }
-    }
-
     // Binding newly created socket to given IP
     if ((bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
     {
@@ -129,6 +115,20 @@ int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out, int timeout_s
     {
         giveme_log("TCP Server Listen failed...\n");
         return -1;
+    }
+
+    if (timeout_seconds)
+    {
+        struct timeval timeout;
+        timeout.tv_sec = timeout_seconds;
+        timeout.tv_usec = 0;
+
+        if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                       sizeof timeout) < 0)
+        {
+            giveme_log("Failed to set socket timeout\n");
+            return -1;
+        }
     }
 
     *server_sock_out = servaddr;
@@ -714,7 +714,7 @@ void giveme_network_download_chain(struct in_addr addr, int port, size_t total_b
     for (size_t i = 0; i < total_blocks; i++)
     {
         struct block block;
-        if(giveme_tcp_recv_bytes(sock, &block, sizeof(struct block)) < 0)
+        if (giveme_tcp_recv_bytes(sock, &block, sizeof(struct block)) < 0)
         {
             giveme_log("%s failed to read a block from the chain\n", __FUNCTION__);
             goto out;
@@ -727,7 +727,6 @@ void giveme_network_download_chain(struct in_addr addr, int port, size_t total_b
             giveme_log("%s failed to add a new block to our blockchain\n", __FUNCTION__);
             goto out;
         }
-
     }
 out:
     giveme_unlock_chain();
@@ -864,6 +863,7 @@ void giveme_network_broadcast_block(struct block *block)
 
 void giveme_network_update_chain()
 {
+    giveme_log("%s asking the network for the most up to date chain\n", __FUNCTION__);
     giveme_lock_chain();
     struct giveme_tcp_packet update_chain_packet;
     update_chain_packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN;
@@ -929,6 +929,12 @@ int giveme_network_process_thread(struct queued_work *work)
     while (1)
     {
         giveme_network_ping();
+        if (network.total_connected > 0 && (time(NULL) - network.last_chain_update_request) > GIVEME_NETWORK_UPDATE_CHANGE_REQUEST_SECONDS)
+        {
+            // Let's update our chain to the latest one
+            giveme_network_update_chain();
+            network.last_chain_update_request = time(NULL);
+        }
         giveme_network_packets_process();
         giveme_network_make_block_if_possible();
         sleep(1);
@@ -1003,6 +1009,10 @@ void giveme_network_initialize()
 
     giveme_network_initialize_connections();
 
+
+    // To give some time for the IP's to be added before we get the most up to date blockchain
+    // We will set the last request time so that it will trigger in 30 seconds
+    network.last_chain_update_request = time(NULL) - GIVEME_NETWORK_UPDATE_CHANGE_REQUEST_SECONDS + 30;
 out:
     if (res < 0)
     {

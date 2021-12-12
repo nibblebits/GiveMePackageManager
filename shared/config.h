@@ -56,7 +56,11 @@
 
 #define GIVEME_NETWORK_TCP_DATA_EXCHANGE_LISTEN_TIMEOUT 5
 
+// Once an hour we will ask for the most up to date blockchain incase we lagged behind.
+#define GIVEME_NETWORK_UPDATE_CHANGE_REQUEST_SECONDS 3600
+
 // Blockchain will resize its self after 1024 blocks, and it will resize to +1024 blocks each time
 #define BLOCKCHAIN_RESIZE_TOTAL_BLOCKS 1024
+
 
 #endif

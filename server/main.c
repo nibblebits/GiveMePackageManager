@@ -50,8 +50,6 @@ int main(int argc, char *argv[])
 	giveme_network_listen();
 	giveme_network_connection_thread_start();
 	giveme_network_process_thread_start();
-	// Let's update our chain to the latest one
-	giveme_network_update_chain();
 	giveme_af_unix_listen();
 
 	return 0;

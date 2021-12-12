@@ -127,6 +127,9 @@ struct network
     // The timestamp for when we last sent a block during our current session
     // Equal to zero on startup.
     time_t last_block_send;
+    
+    // The last time we requested the most up to date chain
+    time_t last_chain_update_request;
 };
 
 void giveme_network_initialize();
