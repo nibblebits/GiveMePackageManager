@@ -664,7 +664,7 @@ void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet,
 
         int server_sock = res;
 
-        if (c(&connection->lock) < 0)
+        if (pthread_mutex_lock(&connection->lock) < 0)
         {
             giveme_log("%s could not lock connection\n", __FUNCTION__);
         }
