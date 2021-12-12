@@ -586,6 +586,10 @@ void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *pack
 }
 
 
+void giveme_network_packet_handle_publish_key(struct giveme_tcp_packet* packet, struct network_connection* connection)
+{
+}
+
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     switch (packet->type)
@@ -596,6 +600,10 @@ void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct netw
 
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
         giveme_network_packet_handle_publish_package(packet, connection);
+        break;
+
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY:
+        giveme_network_packet_handle_publish_key(packet, connection);
         break;
     }
 }

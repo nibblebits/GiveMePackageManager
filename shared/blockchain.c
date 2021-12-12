@@ -66,7 +66,7 @@ int giveme_blockchain_get_individual(struct key *key, struct blockchain_individu
                 published_key = &transaction->packet.publish_public_key;
 
                 // We found a public key packet does it match our key
-                if (strncmp(published_key->pub_key.key, key->key, sizeof(key->key)) == 0)
+                if (key_cmp(&published_key->pub_key, key))
                 {
                     // Yep it matches this was when this key was first ever published
                     memcpy(&individual_out->key_data.key, &published_key->pub_key, sizeof(struct key));
@@ -74,7 +74,7 @@ int giveme_blockchain_get_individual(struct key *key, struct blockchain_individu
                     individual_out->flags |= GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN;
                 }
             }
-            else if (memcmp(&block->data.validator_key, &key, sizeof(key)))
+            else if (key_cmp(&block->data.validator_key, key))
             {
                 // This key verified this block lets increment
                 individual_out->key_data.verified_blocks.total++;

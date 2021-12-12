@@ -16,6 +16,7 @@
 #include "log.h"
 #include "misc.h"
 #include "config.h"
+#include "sha256.h"
 
 struct key public_key = {};
 struct key private_key = {};
@@ -30,13 +31,16 @@ struct key *giveme_private_key()
     return &private_key;
 }
 
+bool key_cmp(struct key *key, struct key *key2)
+{
+    return strncmp(key->key, key2->key, sizeof(key->key)) == 0;
+}
+
 const char *decrypt_public(struct key *key, const char *input, size_t input_len, size_t *out_size)
 {
 
     RSA *pb_rsa = NULL;
     RSA *p_rsa = NULL;
-    EVP_PKEY *evp_pbkey = NULL;
-    EVP_PKEY *evp_pkey = NULL;
 
     BIO *pkeybio = NULL;
     pkeybio = BIO_new_mem_buf((void *)key->key, key->size);
@@ -57,7 +61,6 @@ const char *decrypt_public(struct key *key, const char *input, size_t input_len,
     *out_size = size;
 
     char *encrypt = calloc(1, size);
-
     int encrypt_len;
     if ((encrypt_len = RSA_public_decrypt(input_len, (unsigned char *)input,
                                           (unsigned char *)encrypt, p_rsa, RSA_PKCS1_PADDING)) == -1)
@@ -74,8 +77,6 @@ const char *encrypt_private(const char *input, size_t input_len, size_t *size_ou
 
     RSA *pb_rsa = NULL;
     RSA *p_rsa = NULL;
-    EVP_PKEY *evp_pbkey = NULL;
-    EVP_PKEY *evp_pkey = NULL;
 
     BIO *pkeybio = NULL;
     pkeybio = BIO_new_mem_buf((void *)private_key.key, private_key.size);

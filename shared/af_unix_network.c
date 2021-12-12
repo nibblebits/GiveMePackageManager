@@ -159,7 +159,7 @@ int giveme_network_af_unix_handle_packet_publish(int sock, struct network_af_uni
 
     // Let's make an archive
     giveme_package_create(packet->publish.filename, packet->publish.package);
-
+    
     // We have a request from the client to publish a packet to the network
     // Issue a published response as a test
     struct network_af_unix_packet res_packet = {};
