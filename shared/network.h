@@ -99,6 +99,10 @@ struct network
 
     struct sockaddr_in listen_address;
     int listen_socket;
+
+    // The timestamp for when we last sent a block during our current session
+    // Equal to zero on startup.
+    time_t last_block_send;
 };
 
 void giveme_network_initialize();

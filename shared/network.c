@@ -716,6 +716,13 @@ void giveme_network_broadcast_block(struct block *block)
 
 int giveme_network_make_block_if_possible()
 {
+    // Have we already made a block in the last o
+    if (time(NULL)-network.last_block_send < GIVEME_SECONDS_TO_MAKE_BLOCK)
+    {
+        // We already have made the block for this cycle
+        return 0;
+    }
+    
     // Every 5 minutes we want to make a new block, lets see if its time.
     // We will only make the block if we are the next elected.
     size_t current_time_since_last_tick = time(NULL) % GIVEME_SECONDS_TO_MAKE_BLOCK;
@@ -751,6 +758,7 @@ int giveme_network_make_block_if_possible()
 
             // Now we mined the block we are ready to send it
             giveme_network_broadcast_block(&block);
+            network.last_block_send = time(NULL);
         }
     }
 
