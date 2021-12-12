@@ -58,6 +58,9 @@ double giveme_blockchain_balance_change_for_block(struct key *key, struct block 
 struct key* giveme_blockchain_get_verifier_key()
 {
     size_t total_verifiers = vector_count(blockchain.public_keys);
+    if (total_verifiers <= 0)
+        return NULL;
+    
     // The current five minute block since 1970s
     time_t current_five_minute_block = time(NULL) / GIVEME_SECONDS_TO_MAKE_BLOCK;
     int next_verifier = total_verifiers % current_five_minute_block;
@@ -378,7 +381,7 @@ void giveme_blockchain_handle_added_block(struct block *block)
     for (int i = 0; i < block->data.transactions.total; i++)
     {
         transaction = &block->data.transactions.transactions[i];
-        if (transaction->type == GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY)
+        if (transaction->type == BLOCK_TRANSACTION_TYPE_NEW_KEY)
         {
             vector_push(blockchain.public_keys, &transaction->publish_public_key);
             struct block_transaction_new_key *published_key;
