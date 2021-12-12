@@ -104,19 +104,6 @@ int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out, int timeout_s
         return -1;
     }
 
-    // Binding newly created socket to given IP
-    if ((bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
-    {
-        giveme_log("server socket bind failed...\n");
-        exit(0);
-    }
-
-    if ((listen(sockfd, max_connections)) != 0)
-    {
-        giveme_log("TCP Server Listen failed...\n");
-        return -1;
-    }
-
     if (timeout_seconds)
     {
         struct timeval timeout;
@@ -130,6 +117,21 @@ int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out, int timeout_s
             return -1;
         }
     }
+    
+    // Binding newly created socket to given IP
+    if ((bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
+    {
+        giveme_log("server socket bind failed...\n");
+        exit(0);
+    }
+
+    if ((listen(sockfd, max_connections)) != 0)
+    {
+        giveme_log("TCP Server Listen failed...\n");
+        return -1;
+    }
+
+
 
     *server_sock_out = servaddr;
     return sockfd;
