@@ -359,7 +359,6 @@ struct network_connection *giveme_network_connection_find_slot(pthread_mutex_t *
             // Since we found a free slot we expect the caller to unlock the mutex
             // we tell the caller what the lock is so they know they have to unlock it.
             *lock_to_unlock = &network.connections[i].lock;
-            pthread_mutex_unlock(&network.connections[i].lock);
 
             return &network.connections[i];
         }
@@ -380,9 +379,8 @@ int giveme_network_connection_add(struct network_connection_data *data)
 
     conn_slot->data = data;
     network.total_connected++;
-
-    // We must now unlock the lock that was locked for finding this connection
     pthread_mutex_unlock(lock_to_unlock);
+
     return 0;
 }
 
@@ -558,16 +556,15 @@ void giveme_network_disconnect(struct network_connection *connection)
 
 void giveme_network_broadcast(struct giveme_tcp_packet *packet)
 {
-
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-        if (!network.connections[i].data)
-            continue;
-
-        if (pthread_mutex_trylock(&network.connections[i].lock) < 0)
+        if (pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
         {
             continue;
         }
+
+        if (!network.connections[i].data)
+            continue;
 
         if (giveme_tcp_send_packet(&network.connections[i], packet) < 0)
         {
@@ -774,11 +771,12 @@ void giveme_network_packets_process()
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-        struct network_connection *connection = &network.connections[i];
-        if (pthread_mutex_trylock(&connection->lock) < 0)
+        if (pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
         {
             continue;
         }
+        struct network_connection *connection = &network.connections[i];
+
         if (!giveme_network_connection_connected(connection))
         {
             pthread_mutex_unlock(&connection->lock);
