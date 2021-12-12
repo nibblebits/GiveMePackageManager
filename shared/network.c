@@ -721,7 +721,6 @@ int giveme_network_make_block_if_possible()
     if (current_time_since_last_tick >= 0 && current_time_since_last_tick <= 5)
     {
         giveme_log("%s time to make a new block\n", __FUNCTION__);
-        return 0;
         struct key *key = giveme_blockchain_get_verifier_key();
         if (!key)
         {
