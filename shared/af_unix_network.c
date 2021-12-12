@@ -12,6 +12,7 @@
 #include "misc.h"
 #include "af_unix_network.h"
 #include "blockchain.h"
+#include "network.h"
 #include "log.h"
 #include "package.h"
 #define LISTEN_BACKLOG 50
@@ -118,12 +119,29 @@ int giveme_make_fake_blockchain(int sfd, size_t total_blocks)
     if (giveme_af_unix_write(sfd, &packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
         return -1;
 
-   // Let's read back the publish response
+    // Let's read back the publish response
     struct network_af_unix_packet res_packet;
     if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
         return -1;
 
-    return 0; 
+    return 0;
+}
+
+int giveme_signup(int sfd, const char* name)
+{
+    struct network_af_unix_packet packet = {};
+    packet.type = NETWORK_AF_UNIX_PACKET_TYPE_SIGNUP;
+    strncpy(packet.signup.name, name, sizeof(packet.signup.name));
+    // Send the packet
+    if (giveme_af_unix_write(sfd, &packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
+        return -1;
+
+    // Let's read back the publish response
+    struct network_af_unix_packet res_packet;
+    if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
+        return -1;
+
+    return 0;
 }
 int giveme_publish(int sfd, const char *filename, const char *package_name)
 {
@@ -159,7 +177,7 @@ int giveme_network_af_unix_handle_packet_publish(int sock, struct network_af_uni
 
     // Let's make an archive
     giveme_package_create(packet->publish.filename, packet->publish.package);
-    
+
     // We have a request from the client to publish a packet to the network
     // Issue a published response as a test
     struct network_af_unix_packet res_packet = {};
@@ -184,6 +202,26 @@ int giveme_network_af_unix_handle_packet_make_fake_blockchain(int sock, struct n
     return 0;
 }
 
+int giveme_network_af_unix_handle_packet_signup(int sock, struct network_af_unix_packet *packet)
+{
+    giveme_log("%s could not find our public key data in the blockchain\n", __FUNCTION__);
+    giveme_log("%s will publish our identity and key to the network\n", __FUNCTION__);
+    struct giveme_tcp_packet tcp_packet = {};
+    tcp_packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY;
+    strncpy(tcp_packet.publish_public_key.name, packet->signup.name, sizeof(tcp_packet.publish_package.name));
+    memcpy(&tcp_packet.publish_public_key.pub_key, giveme_public_key(), sizeof(tcp_packet.publish_public_key.pub_key));
+    giveme_network_broadcast(&tcp_packet);
+
+
+
+    struct network_af_unix_packet res_packet = {};
+    res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PUBLISH_PUBLIC_KEY_RESPONSE;
+    res_packet.flags |= NETWORK_AF_UNIX_PACKET_FLAG_HAS_FRIENDLY_MESSAGE;
+    sprintf(res_packet.message, "You have successfully signed up to the network as %s\n", packet->signup.name);
+    giveme_af_unix_write(sock, &res_packet);
+
+}
+
 int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet *packet)
 {
     int res = 0;
@@ -195,6 +233,10 @@ int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet
 
     case NETWORK_AF_UNIX_PACKET_TYPE_MAKE_FAKE_BLOCKCHAIN:
         res = giveme_network_af_unix_handle_packet_make_fake_blockchain(sock, packet);
+        break;
+
+    case NETWORK_AF_UNIX_PACKET_TYPE_SIGNUP:
+        res = giveme_network_af_unix_handle_packet_signup(sock, packet);
         break;
     }
     return res;

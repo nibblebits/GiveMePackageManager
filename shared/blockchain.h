@@ -5,7 +5,6 @@
 #include "sha256.h"
 #include "config.h"
 #include "misc.h"
-#include "network.h"
 #include "key.h"
 
 #define GIVEME_BLOCKCHAIN_BLOCK_VALID 0
@@ -69,8 +68,38 @@ struct blockchain
         size_t crawled_total;
     } crawl;
     struct block *block;
+
+    // Information on the blockchain about ourselves.
+    struct blockchain_individual me;
+
+    // Vector of struct giveme_tcp_packet_publish_key* for all published public keys on this blockchain
+    struct vector *public_keys;
 };
 
+enum
+{
+    BLOCK_TRANSACTION_TYPE_NEW_PACKAGE,
+    BLOCK_TRANSACTION_TYPE_NEW_KEY,
+};
+
+struct block_transaction
+{
+    int type;
+    union
+    {
+        struct block_transaction_new_package
+        {
+            char name[GIVEME_PACKAGE_NAME_MAX];
+
+        } publish_package;
+
+        struct block_transaction_new_key
+        {
+            struct key pub_key;
+            char name[GIVEME_KEY_NAME_MAX];
+        } publish_public_key;
+    };
+};
 
 struct block
 {
@@ -78,7 +107,7 @@ struct block
     {
         struct block_transactions
         {
-            struct network_transaction transactions[GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK];
+            struct block_transaction transactions[GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK];
             int total;
         } transactions;
 
@@ -142,4 +171,26 @@ size_t giveme_blockchain_total_blocks_left(int index);
  * @return int 
  */
 int giveme_blockchain_get_individual(struct key *key, struct blockchain_individual *individual_out);
+
+/**
+ * @brief Loads important data from the blockchain such as the public keys, our balance ect..
+ * Blockchain network will not connect until this is done.
+ * 
+ */
+void giveme_blockchain_load_data();
+
+/**
+ * @brief Returns true if we (our public key) is known on the blockchain
+ * 
+ * @return true 
+ * @return false 
+ */
+bool giveme_blockchain_are_we_known();
+
+/**
+ * @brief Returns the public key of the next verifier who should verify the next block
+ * 
+ * @return struct key* The verifier key
+ */
+struct key *giveme_blockchain_get_verifier_key();
 #endif

@@ -30,8 +30,7 @@ int giveme_network_connection_thread(struct queued_work *work);
 int giveme_network_process_thread(struct queued_work *work);
 bool giveme_network_connection_connected(struct network_connection *connection);
 
-
-struct network_transaction** giveme_network_find_network_transaction_slot()
+struct network_transaction **giveme_network_find_network_transaction_slot()
 {
     for (int i = 0; i < GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK; i++)
     {
@@ -44,16 +43,16 @@ struct network_transaction** giveme_network_find_network_transaction_slot()
     return NULL;
 }
 
-struct network_transaction* giveme_network_new_transaction()
+struct network_transaction *giveme_network_new_transaction()
 {
     return calloc(1, sizeof(struct network_transaction));
 }
 
-int giveme_network_create_transaction_for_packet(struct giveme_tcp_packet* packet)
+int giveme_network_create_transaction_for_packet(struct giveme_tcp_packet *packet)
 {
     int res = 0;
     pthread_mutex_lock(&network.transactions.lock);
-    struct network_transaction** slot = giveme_network_find_network_transaction_slot();
+    struct network_transaction **slot = giveme_network_find_network_transaction_slot();
     if (!slot)
     {
         giveme_log("%s out of transaction slots cannot create transaction\n", __FUNCTION__);
@@ -61,8 +60,7 @@ int giveme_network_create_transaction_for_packet(struct giveme_tcp_packet* packe
         goto out;
     }
 
-
-    struct network_transaction* transaction = giveme_network_new_transaction();
+    struct network_transaction *transaction = giveme_network_new_transaction();
     memcpy(&transaction->packet, packet, sizeof(struct giveme_tcp_packet));
     *slot = transaction;
     network.transactions.total++;
@@ -582,14 +580,24 @@ void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *pack
     {
         giveme_log("%s failed to create a transaction for the packet provided for IP %s\n", __FUNCTION__, giveme_connection_ip(connection));
     }
-
 }
 
-
-void giveme_network_packet_handle_publish_key(struct giveme_tcp_packet* packet, struct network_connection* connection)
+void giveme_network_packet_handle_publish_key(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
+    // We have a request to publish a public key, lets add it to the transactions
+    giveme_log("%s Publish public key request for packet %s by %s\n", __FUNCTION__, packet->publish_public_key.name, giveme_connection_ip(connection));
+    int res = giveme_network_create_transaction_for_packet(packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to create a transaction for the packet provided for IP %s\n", __FUNCTION__, giveme_connection_ip(connection));
+    }
 }
 
+void giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packet, struct network_connection *connection)
+{
+    giveme_log("%s new verified block discovered, attempting to add to chain\n", __FUNCTION__);
+    giveme_blockchain_add_block(&packet->verified_block.block);
+}
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     switch (packet->type)
@@ -604,6 +612,10 @@ void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct netw
 
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY:
         giveme_network_packet_handle_publish_key(packet, connection);
+        break;
+
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK:
+        giveme_network_packet_handle_verified_block(packet, connection);
         break;
     }
 }
@@ -647,7 +659,58 @@ void giveme_network_packets_process()
     }
 }
 
-void giveme_network_make_block_if_possible()
+int giveme_network_create_block_transaction_for_network_transaction(struct network_transaction *transaction, struct block_transaction *transaction_out)
+{
+    int res = 0;
+    switch (transaction->packet.type)
+    {
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
+        transaction_out->type = BLOCK_TRANSACTION_TYPE_NEW_PACKAGE;
+        strncpy(transaction_out->publish_package.name, transaction->packet.publish_package.name, sizeof(transaction_out->publish_package.name));
+        break;
+
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY:
+        transaction_out->type = BLOCK_TRANSACTION_TYPE_NEW_KEY;
+        strncpy(transaction_out->publish_public_key.name, transaction->packet.publish_public_key.name, sizeof(transaction_out->publish_public_key.name));
+        memcpy(&transaction_out->publish_public_key.pub_key, &transaction->packet.publish_public_key.pub_key, sizeof(transaction_out->publish_public_key.pub_key));
+        break;
+
+        default:
+            res = -1;
+    }
+
+    return res;
+}
+int giveme_network_make_block_for_transactions(struct network_transactions *transactions, struct block *block_out)
+{
+    int res = 0;
+    memset(block_out, 0, sizeof(struct block));
+    block_out->data.transactions.total = transactions->total;
+    for (int i = 0; i < GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK; i++)
+    {
+        int res = giveme_network_create_block_transaction_for_network_transaction(transactions->awaiting[i], &block_out->data.transactions.transactions[i]);
+        if (res < 0)
+        {
+            giveme_log("%s failed to create a new block transaction from a given network transaction\n");
+            goto out;
+        }
+
+    }
+
+    block_out->data.validator_key = *giveme_public_key();
+out:
+    return res;
+}
+
+void giveme_network_broadcast_block(struct block *block)
+{
+    struct giveme_tcp_packet packet = {};
+    packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK;
+    memcpy(&packet.verified_block.block, block, sizeof(packet.verified_block.block));
+    giveme_network_broadcast(&packet);
+}
+
+int giveme_network_make_block_if_possible()
 {
     // Every 5 minutes we want to make a new block, lets see if its time.
     // We will only make the block if we are the next elected.
@@ -657,7 +720,38 @@ void giveme_network_make_block_if_possible()
     if (current_time_since_last_tick >= 0 && current_time_since_last_tick <= 5)
     {
         giveme_log("%s time to make a new block\n", __FUNCTION__);
+        struct key *key = giveme_blockchain_get_verifier_key();
+        if (!key)
+        {
+            giveme_log("%s uh what the hell NULL verifier key\n", __FUNCTION__);
+            goto out;
+        }
+
+        // Are we the one who should be verifying the block?
+        if (key_cmp(key, giveme_public_key()))
+        {
+            struct block block;
+            int res = giveme_network_make_block_for_transactions(&network.transactions, &block);
+            if (res < 0)
+            {
+                giveme_log("%s failed to make a block for the transaction list\n", __FUNCTION__);
+                goto out;
+            }
+
+            res = giveme_mine(&block);
+            if (res < 0)
+            {
+                giveme_log("%s failed to mine the new block we verified\n", __FUNCTION__);
+                goto out;
+            }
+
+            // Now we mined the block we are ready to send it
+            giveme_network_broadcast_block(&block);
+        }
     }
+
+out:
+    return 0;
 }
 
 int giveme_network_process_thread(struct queued_work *work)

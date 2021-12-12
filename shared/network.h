@@ -3,6 +3,7 @@
 
 #include "config.h"
 #include "key.h"
+#include "blockchain.h"
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -31,9 +32,11 @@ enum
 {
     GIVEME_NETWORK_TCP_PACKET_TYPE_PING,
     GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE,
-    GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY
+    GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY,
+    GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK
 };
 
+struct block block;
 struct giveme_tcp_packet
 {
     int type;
@@ -52,6 +55,11 @@ struct giveme_tcp_packet
             char name[GIVEME_KEY_NAME_MAX];
         } publish_public_key;
 
+
+        struct giveme_tcp_packet_verified_block
+        {
+            struct block block;
+        } verified_block;
 
         // In case we want to add special packets in the future
         // we should reserve some data in the tcp packet

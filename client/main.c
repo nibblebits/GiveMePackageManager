@@ -20,6 +20,18 @@ int publish_package(int argc, char*argv[])
 	return 0;
 }
 
+int signup(int argc, char*argv[])
+{
+	if (argc < GIVEME_REQUIRED_SIGNUP_ARGC)
+	{
+		printf("Expecting a name that you want to identify on the network with\n");
+		return -1;
+	}
+
+	int sock = giveme_af_unix_connect();
+	giveme_signup(sock, argv[2]);
+}
+
 int mine_useless_blocks(int argc, char*argv[])
 {
 	if (argc < GIVEME_REQUIRED_FAKE_MINING_ARGC)
@@ -47,6 +59,10 @@ int main(int argc, char *argv[])
 	else if(S_EQ(argv[1], "mine"))
 	{
 		return mine_useless_blocks(argc, argv);
+	}
+	else if(S_EQ(argv[1], "signup"))
+	{
+		return signup(argc, argv);
 	}
 
 	return 0;

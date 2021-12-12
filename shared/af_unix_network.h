@@ -14,6 +14,8 @@ enum
     NETWORK_AF_UNIX_PACKET_TYPE_PUBLISH_PACKAGE_RESPONSE,
     NETWORK_AF_UNIX_PACKET_TYPE_MAKE_FAKE_BLOCKCHAIN,
     NETWORK_AF_UNIX_PACKET_TYPE_JUST_A_MESSAGE,
+    NETWORK_AF_UNIX_PACKET_TYPE_SIGNUP,
+    NETWORK_AF_UNIX_PACKET_TYPE_PUBLISH_PUBLIC_KEY_RESPONSE
 };
 
 enum
@@ -44,6 +46,11 @@ struct network_af_unix_packet
         {
             size_t total_blocks;
         } fake_blockchain;
+
+        struct network_af_unix_signup
+        {
+            char name[GIVEME_KEY_NAME_MAX];
+        } signup;
     };
 
     char message[FRIENDLY_MESSAGE_MAX];
@@ -53,6 +60,7 @@ int giveme_af_unix_connect();
 int giveme_af_unix_listen();
 int giveme_download(int sfd, const char* package_name);
 int giveme_publish(int sfd, const char* path_name, const char* package_name);
+int giveme_signup(int sfd, const char* name);
 int giveme_make_fake_blockchain(int sfd, size_t total_blocks);
 
 #endif

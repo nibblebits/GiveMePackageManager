@@ -23,21 +23,28 @@
 
 // Memory mapped pointer to the blockchain
 struct blockchain blockchain;
-pthread_mutex_t blockchain_mine_lock;
+pthread_mutex_t blockchain_lock;
 
 void giveme_lock_chain()
 {
-    pthread_mutex_lock(&blockchain_mine_lock);
+    pthread_mutex_lock(&blockchain_lock);
 }
 
 void giveme_unlock_chain()
 {
-    pthread_mutex_unlock(&blockchain_mine_lock);
+    pthread_mutex_unlock(&blockchain_lock);
 }
 
-double giveme_blockchain_balance_change_for_block(struct key* key, struct block* block)
+double giveme_blockchain_balance_change_for_block(struct key *key, struct block *block)
 {
     double balance_change = 0;
+    struct key blank_key = {};
+    // Got a blank key.. What we going to do with that..
+    if (memcmp(key, &blank_key, sizeof(key)) == 0)
+    {
+        return 0;
+    }
+
     if (memcmp(&block->data.validator_key, key, sizeof(block->data.validator_key)) == 0)
     {
         // The validator key matches? Let's apply a balance change.
@@ -46,6 +53,15 @@ double giveme_blockchain_balance_change_for_block(struct key* key, struct block*
     }
 
     return balance_change;
+}
+
+struct key* giveme_blockchain_get_verifier_key()
+{
+    size_t total_verifiers = vector_count(blockchain.public_keys);
+    // The current five minute block since 1970s
+    time_t current_five_minute_block = time(NULL) / GIVEME_SECONDS_TO_MAKE_BLOCK;
+    int next_verifier = total_verifiers % current_five_minute_block;
+    return vector_at(blockchain.public_keys, next_verifier);
 }
 
 int giveme_blockchain_get_individual(struct key *key, struct blockchain_individual *individual_out)
@@ -58,12 +74,12 @@ int giveme_blockchain_get_individual(struct key *key, struct blockchain_individu
     {
         for (int i = 0; i < block->data.transactions.total; i++)
         {
-            struct network_transaction *transaction;
+            struct block_transaction *transaction;
             transaction = &block->data.transactions.transactions[i];
-            if (transaction->packet.type == GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY)
+            if (transaction->type == BLOCK_TRANSACTION_TYPE_NEW_KEY)
             {
-                struct giveme_tcp_packet_publish_key *published_key;
-                published_key = &transaction->packet.publish_public_key;
+                struct block_transaction_new_key *published_key;
+                published_key = &transaction->publish_public_key;
 
                 // We found a public key packet does it match our key
                 if (key_cmp(&published_key->pub_key, key))
@@ -232,9 +248,9 @@ struct block *giveme_blockchain_back()
 struct block *giveme_blockchain_back_safe()
 {
     struct block *block = NULL;
-    giveme_lock_chain(&blockchain_mine_lock);
+    giveme_lock_chain(&blockchain_lock);
     block = giveme_blockchain_back();
-    giveme_unlock_chain(&blockchain_mine_lock);
+    giveme_unlock_chain(&blockchain_lock);
     return block;
 }
 
@@ -346,6 +362,58 @@ void giveme_blockchain_free(struct blockchain *chain)
     free(chain);
 }
 
+bool giveme_blockchain_are_we_known()
+{
+    return blockchain.me.flags & GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN;
+}
+
+
+void giveme_blockchain_handle_added_block(struct block *block)
+{
+    // Get our public key.
+    struct key *key = giveme_public_key();
+    struct block_transaction *transaction;
+    for (int i = 0; i < block->data.transactions.total; i++)
+    {
+        transaction = &block->data.transactions.transactions[i];
+        if (transaction->type == GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY)
+        {
+            vector_push(blockchain.public_keys, &transaction->publish_public_key);
+            struct block_transaction_new_key *published_key;
+            published_key = &transaction->publish_public_key;
+
+            // We found a public key packet does it match our key
+            if (key_cmp(&published_key->pub_key, key))
+            {
+                // Yep it matches this was when this key was first ever published
+                memcpy(&blockchain.me.key_data.key, &published_key->pub_key, sizeof(struct key));
+                strncpy(blockchain.me.key_data.name, published_key->name, sizeof(blockchain.me.key_data.name));
+                blockchain.me.flags |= GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN;
+            }
+        }
+        else if (key_cmp(&block->data.validator_key, key))
+        {
+            // This key verified this block lets increment
+            blockchain.me.key_data.verified_blocks.total++;
+        }
+
+        blockchain.me.key_data.balance += giveme_blockchain_balance_change_for_block(key, block);
+    }
+}
+
+void giveme_blockchain_load_data()
+{
+    giveme_blockchain_begin_crawl(NULL, NULL);
+    struct block *block = giveme_blockchain_crawl_next(0);
+    struct block *prev_block = NULL;
+    while (block)
+    {
+        giveme_blockchain_handle_added_block(block);
+        block = giveme_blockchain_crawl_next(0);
+    }
+
+}
+
 void giveme_blockchain_create_genesis_block()
 {
     giveme_log("%s creating genesis block for first time blockchain use\n", __FUNCTION__);
@@ -353,9 +421,9 @@ void giveme_blockchain_create_genesis_block()
     memset(&genesis_block, 0, sizeof(genesis_block));
     genesis_block.data.transactions.total = 1;
 
-    struct giveme_tcp_packet* packet = &genesis_block.data.transactions.transactions[0].packet;
-    packet->type = GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY;
-    struct giveme_tcp_packet_publish_key* key = &packet->publish_public_key;
+    struct block_transaction *transaction = &genesis_block.data.transactions.transactions[0];
+    transaction->type = BLOCK_TRANSACTION_TYPE_NEW_KEY;
+    struct block_transaction_new_key *key = &transaction->publish_public_key;
     strncpy(key->name, "Genesis Individual", sizeof(key->name));
     key->pub_key.size = strlen(GIVEME_BLOCKCHAIN_GENESIS_KEY);
     strncpy(key->pub_key.key, GIVEME_BLOCKCHAIN_GENESIS_KEY, sizeof(key->pub_key.key));
@@ -388,10 +456,12 @@ void giveme_blockchain_initialize()
 
     blockchain.total = giveme_blockchain_compute_block_count();
 
-    if (pthread_mutex_init(&blockchain_mine_lock, NULL) != 0)
+    if (pthread_mutex_init(&blockchain_lock, NULL) != 0)
     {
         giveme_log("Failed to initialize blockchain mine lock mutex\n");
     }
+
+    blockchain.public_keys = vector_create(sizeof(struct giveme_tcp_packet_publish_key));
 
     if (!blockchain_exists)
     {
@@ -399,6 +469,8 @@ void giveme_blockchain_initialize()
         // lets create the genesis block
         giveme_blockchain_create_genesis_block();
     }
+
+    giveme_blockchain_load_data();
 }
 
 int giveme_block_verify_for_chain(struct blockchain *chain, struct block *block)
