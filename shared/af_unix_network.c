@@ -204,8 +204,6 @@ int giveme_network_af_unix_handle_packet_make_fake_blockchain(int sock, struct n
 
 int giveme_network_af_unix_handle_packet_signup(int sock, struct network_af_unix_packet *packet)
 {
-    giveme_log("%s could not find our public key data in the blockchain\n", __FUNCTION__);
-    giveme_log("%s will publish our identity and key to the network\n", __FUNCTION__);
     struct giveme_tcp_packet tcp_packet = {};
     tcp_packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY;
     strncpy(tcp_packet.publish_public_key.name, packet->signup.name, sizeof(tcp_packet.publish_package.name));
