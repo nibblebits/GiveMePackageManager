@@ -790,6 +790,7 @@ void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet,
         res_packet.update_chain_response.blocks_left_to_end = blocks_left_to_end;
         res_packet.update_chain_response.data_port = GIVEME_TCP_DATA_EXCHANGE_PORT;
         memcpy(res_packet.update_chain_response.last_hash, last_block->hash, sizeof(res_packet.update_chain_response.last_hash));
+        memcpy(res_packet.update_chain_response.start_hash, block->hash, sizeof(res_packet.update_chain_response.start_hash));
         int res = giveme_tcp_send_packet(connection, &res_packet);
         if (res < 0)
         {
