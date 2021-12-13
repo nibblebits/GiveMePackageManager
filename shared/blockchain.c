@@ -27,11 +27,13 @@ pthread_mutex_t blockchain_lock;
 
 void giveme_lock_chain()
 {
+    return;
     pthread_mutex_lock(&blockchain_lock);
 }
 
 void giveme_unlock_chain()
 {
+    return;
     pthread_mutex_unlock(&blockchain_lock);
 }
 

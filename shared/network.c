@@ -339,7 +339,7 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
         res = write(client, ptr, amount);
         if (res < 0)
         {
-            printf("%s issue sending bytes err=%i\n", __FUNCTION__, errno);
+            giveme_log("%s issue sending bytes err=%i\n", __FUNCTION__, errno);
             return res;
         }
         amount_left -= res;
@@ -353,7 +353,7 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
     size_t amount_left = amount;
     while (amount_left != 0)
     {
-        res = recv(client, ptr, amount, 0);
+        res = recv(client, ptr, amount, MSG_WAITALL);
         if (res < 0)
         {
             return res;
@@ -410,6 +410,7 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
 
 bool giveme_network_ip_connected(struct in_addr *addr)
 {
+    bool connected = false;
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
         pthread_mutex_lock(&network.connections[i].lock);
@@ -417,13 +418,17 @@ bool giveme_network_ip_connected(struct in_addr *addr)
             memcmp(&network.connections[i].data->addr.sin_addr, addr, sizeof(network.connections[i].data->addr.sin_addr)) == 0)
         {
             // The IP is connected
-            pthread_mutex_unlock(&network.connections[i].lock);
-            return true;
+            connected = true;
         }
         pthread_mutex_unlock(&network.connections[i].lock);
+
+        if (connected)
+        {
+            break;
+        }
     }
 
-    return false;
+    return connected;
 }
 
 bool giveme_network_ip_address_exists(struct in_addr *addr)
@@ -476,16 +481,16 @@ struct network_connection *giveme_network_connection_find_slot(pthread_mutex_t *
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-        pthread_mutex_lock(&network.connections[i].lock);
+      //  pthread_mutex_lock(&network.connections[i].lock);
         if (network.connections[i].data == NULL)
         {
             // Since we found a free slot we expect the caller to unlock the mutex
             // we tell the caller what the lock is so they know they have to unlock it.
-            *lock_to_unlock = &network.connections[i].lock;
+         //   *lock_to_unlock = &network.connections[i].lock;
 
             return &network.connections[i];
         }
-        pthread_mutex_unlock(&network.connections[i].lock);
+       // pthread_mutex_unlock(&network.connections[i].lock);
     }
 
     return NULL;
@@ -502,7 +507,7 @@ int giveme_network_connection_add(struct network_connection_data *data)
 
     conn_slot->data = data;
     network.total_connected++;
-    pthread_mutex_unlock(lock_to_unlock);
+  //  pthread_mutex_unlock(lock_to_unlock);
 
     return 0;
 }
@@ -706,7 +711,7 @@ void giveme_network_broadcast(struct giveme_tcp_packet *packet)
 
 void giveme_network_ping()
 {
-    struct giveme_tcp_packet packet;
+    struct giveme_tcp_packet packet = {};
     packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PING;
     giveme_network_broadcast(&packet);
 }
@@ -784,13 +789,13 @@ out:
 
 void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
+    giveme_lock_chain();
+
     giveme_log("%s update chain request\n", __FUNCTION__);
 
-    giveme_lock_chain();
     size_t blocks_left_to_end = 0;
     struct block *block = giveme_blockchain_block(packet->update_chain.last_hash, &blocks_left_to_end);
     struct block *last_block = giveme_blockchain_back();
-    giveme_unlock_chain();
 
     if (block && blocks_left_to_end > 0)
     {
@@ -809,12 +814,11 @@ void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet,
     }
 
 out:
-    return;
+    giveme_unlock_chain();
 }
 
 int giveme_network_download_chain(struct in_addr addr, int port, const char *start_hash)
 {
-    giveme_lock_chain();
     int res = 0;
     giveme_log("%s download blockchain from peer\n", __FUNCTION__);
     int sock = giveme_tcp_network_connect(addr, port, 0);
@@ -825,6 +829,7 @@ int giveme_network_download_chain(struct in_addr addr, int port, const char *sta
         goto out;
     }
 
+    giveme_log("%s connected, downloading chain\n", __FUNCTION__);
     // First thing we do is send a request for a chain
     struct giveme_dataexchange_tcp_packet packet = {};
     packet.type = GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_CHAIN_REQUEST;
@@ -879,6 +884,7 @@ int giveme_network_download_chain(struct in_addr addr, int port, const char *sta
     for (size_t i = 0; i < total_blocks; i++)
     {
         struct block block;
+        giveme_log("%s downloading block %i\n", __FUNCTION__, i);
         if (giveme_tcp_recv_bytes(sock, &block, sizeof(struct block)) < 0)
         {
             giveme_log("%s failed to read a block from the chain\n", __FUNCTION__);
@@ -901,15 +907,18 @@ int giveme_network_download_chain(struct in_addr addr, int port, const char *sta
             goto out;
         }
     }
-out:
-    giveme_unlock_chain();
 
+    giveme_log("%s downloaded entire blockchain\n", __FUNCTION__);
+
+out:
     return res;
 }
 
 void giveme_network_packet_handle_update_chain_response(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     giveme_log("%s received packet for update chain will download new chain\n", __FUNCTION__);
+    giveme_lock_chain();
+
     size_t blocks_to_end = packet->update_chain_response.blocks_left_to_end;
     int port = packet->update_chain_response.data_port;
     const char *start_hash = packet->update_chain_response.start_hash;
@@ -918,6 +927,8 @@ void giveme_network_packet_handle_update_chain_response(struct giveme_tcp_packet
     {
         giveme_log("%s failed to download blockchain\n", __FUNCTION__);
     }
+
+    giveme_unlock_chain();
 }
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
@@ -1049,8 +1060,8 @@ void giveme_network_update_chain()
     struct giveme_tcp_packet update_chain_packet;
     update_chain_packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN;
     memcpy(update_chain_packet.update_chain.last_hash, giveme_blockchain_back()->hash, sizeof(update_chain_packet.update_chain.last_hash));
-    giveme_unlock_chain();
     giveme_network_broadcast(&update_chain_packet);
+    giveme_unlock_chain();
 }
 
 int giveme_network_make_block_if_possible()
