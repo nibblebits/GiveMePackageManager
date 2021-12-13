@@ -167,9 +167,9 @@ int giveme_network_dataexchange_handle_chain_request(struct giveme_dataexchange_
         if (res < 0)
         {
             giveme_log("%s unable to send unable to help packet\n");
-            res = -1;
-            goto out;
         }
+        res = -1;
+        goto out;
     }
 
     // We have the block we will send it to them.
