@@ -54,7 +54,7 @@
 // 30 seconds waiting on a recv or send and we will timeout.
 #define GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS 30
 
-#define GIVEME_NETWORK_TCP_DATA_EXCHANGE_LISTEN_TIMEOUT 5
+#define GIVEME_NETWORK_TCP_DATA_EXCHANGE_LISTEN_TIMEOUT 10
 
 // Once an hour we will ask for the most up to date blockchain incase we lagged behind.
 #define GIVEME_NETWORK_UPDATE_CHANGE_REQUEST_SECONDS 3600
