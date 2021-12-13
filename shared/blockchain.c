@@ -424,6 +424,16 @@ size_t giveme_blockchain_max_allowed_blocks_for_now()
     return (time(NULL) - GIVEME_BLOCK_BEGIN_TIMESTAMP) / GIVEME_SECONDS_TO_MAKE_BLOCK;
 }
 
+bool giveme_blockchain_can_add_blocks(size_t amount)
+{
+    size_t max_allowed_blocks = giveme_blockchain_max_allowed_blocks_for_now();
+    if (blockchain.total+amount > max_allowed_blocks)
+    {
+        return false;
+    }
+
+    return true;
+}
 void giveme_blockchain_create_genesis_block()
 {
     giveme_log("%s creating genesis block for first time blockchain use\n", __FUNCTION__);

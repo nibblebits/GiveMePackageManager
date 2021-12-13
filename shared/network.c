@@ -29,6 +29,11 @@ int giveme_network_accept_thread(struct queued_work *work);
 int giveme_network_connection_thread(struct queued_work *work);
 int giveme_network_process_thread(struct queued_work *work);
 bool giveme_network_connection_connected(struct network_connection *connection);
+int giveme_tcp_dataexchange_send_packet(int client, struct giveme_dataexchange_tcp_packet *packet);
+int giveme_network_upload_chain(struct network_connection_data *conn, struct block *from_block, size_t total_blocks);
+int giveme_tcp_dataexchange_recv_packet(int client, struct giveme_dataexchange_tcp_packet *packet);
+struct network_connection_data *giveme_network_connection_data_new();
+int giveme_tcp_network_accept(int sock, struct sockaddr_in *client_out);
 
 struct network_transaction **giveme_network_find_network_transaction_slot()
 {
@@ -122,7 +127,7 @@ int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out, int timeout_s
     if ((bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
     {
         giveme_log("server socket bind failed...\n");
-        exit(0);
+        return -1;
     }
 
     if ((listen(sockfd, max_connections)) != 0)
@@ -138,6 +143,93 @@ int giveme_tcp_network_listen(struct sockaddr_in *server_sock_out, int timeout_s
 bool giveme_network_connection_connected(struct network_connection *connection)
 {
     return connection && connection->data != NULL;
+}
+
+int giveme_network_dataexchange_send_unable_to_help(struct network_connection_data *conn)
+{
+    struct giveme_dataexchange_tcp_packet res_packet = {};
+    res_packet.type = GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_UNABLE_TO_HELP;
+    return giveme_tcp_dataexchange_send_packet(conn->sock, &res_packet);
+}
+
+int giveme_network_dataexchange_handle_chain_request(struct giveme_dataexchange_tcp_packet *packet, struct network_connection_data *conn)
+{
+    int res = 0;
+    giveme_lock_chain();
+
+    const char *hash = packet->chain_request.hash;
+    size_t blocks_left_to_end = 0;
+    struct block *block = giveme_blockchain_block(hash, &blocks_left_to_end);
+    if (!block)
+    {
+        // We couldn't find the block they asked us for sadly.
+        res = giveme_network_dataexchange_send_unable_to_help(conn);
+        if (res < 0)
+        {
+            giveme_log("%s unable to send unable to help packet\n");
+            res = -1;
+            goto out;
+        }
+    }
+
+    // We have the block we will send it to them.
+    res = giveme_network_upload_chain(conn, block, blocks_left_to_end);
+    if (res < 0)
+    {
+        giveme_log("%s unable to upload chain\n");
+        goto out;
+    }
+
+out:
+    giveme_unlock_chain();
+    return 0;
+}
+int giveme_network_dataexchange_connection(struct queued_work *work)
+{
+    int res = 0;
+    struct network_connection_data *conn = work->private;
+
+    // Let's find out what this person wants from us
+    struct giveme_dataexchange_tcp_packet packet;
+    giveme_tcp_dataexchange_recv_packet(conn->sock, &packet);
+    switch (packet.type)
+    {
+    case GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_CHAIN_REQUEST:
+        res = giveme_network_dataexchange_handle_chain_request(&packet, conn);
+        break;
+
+    default:
+        giveme_log("%s unrecognized request for dataexchange, nothing we can do\n", __FUNCTION__);
+    }
+
+    close(conn->sock);
+    free(conn);
+
+    return res;
+}
+int giveme_network_dataexchange_accept_thread(struct queued_work *work)
+{
+    while (1)
+    {
+        struct network_connection_data *conn = giveme_network_connection_data_new();
+        conn->sock = giveme_tcp_network_accept(network.dataexchange_listen_socket, &conn->addr);
+        if (conn->sock < 0)
+        {
+            giveme_log("%s Failed to accept a new client on data exchange accept thread\n", __FUNCTION__);
+            free(conn);
+            continue;
+        }
+
+        // Pass the connection as work
+        giveme_queue_work(giveme_network_dataexchange_connection, conn);
+    }
+    return 0;
+}
+
+int giveme_network_dataexchange_accept_thread_start()
+{
+    giveme_queue_work(giveme_network_dataexchange_accept_thread, NULL);
+    return 0;
 }
 
 int giveme_network_accept_thread_start()
@@ -171,6 +263,21 @@ int giveme_network_listen()
 
     //  Start the accept thread
     err = giveme_network_accept_thread_start();
+    if (err < 0)
+    {
+        goto out;
+    }
+
+    network.dataexchange_listen_socket = giveme_tcp_network_listen(&network.dataexchange_listen_address, false, GIVEME_TCP_DATA_EXCHANGE_PORT, GIVEME_TCP_SERVER_MAX_CONNECTIONS);
+    if (network.dataexchange_listen_socket < 0)
+    {
+        giveme_log("Problem listening on port %i\n", GIVEME_TCP_DATA_EXCHANGE_PORT);
+        err = -1;
+        goto out;
+    }
+
+    //  Start the accept thread
+    err = giveme_network_dataexchange_accept_thread_start();
     if (err < 0)
     {
         goto out;
@@ -255,6 +362,12 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
     return res;
 }
 
+int giveme_tcp_dataexchange_send_packet(int client, struct giveme_dataexchange_tcp_packet *packet)
+{
+    int res = giveme_tcp_send_bytes(client, packet, sizeof(struct giveme_dataexchange_tcp_packet)) > 0 ? 0 : -1;
+    return res;
+}
+
 int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_tcp_packet *packet)
 {
     if (!giveme_network_connection_connected(connection))
@@ -268,6 +381,14 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
     {
         connection->data->last_contact = time(NULL);
     }
+
+    return res;
+}
+
+int giveme_tcp_dataexchange_recv_packet(int client, struct giveme_dataexchange_tcp_packet *packet)
+{
+    int res = giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_dataexchange_tcp_packet)) > 0 ? 0 : -1;
+    return res;
 }
 
 int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_tcp_packet *packet)
@@ -283,6 +404,7 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
     {
         connection->data->last_contact = time(NULL);
     }
+    return res;
 }
 
 bool giveme_network_ip_connected(struct in_addr *addr)
@@ -495,7 +617,7 @@ int giveme_network_connect_to_ip(struct in_addr ip)
     if (giveme_network_ip_connected(&ip))
     {
         return 1;
-    }   
+    }
     giveme_log("%s test\n", __FUNCTION__);
     return giveme_tcp_network_connect(ip, GIVEME_TCP_PORT, GIVEME_CONNECT_FLAG_ADD_TO_CONNECTIONS) < 0 ? -1 : 0;
 }
@@ -620,16 +742,25 @@ void giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packe
     giveme_blockchain_add_block(&packet->verified_block.block);
 }
 
-void giveme_network_upload_chain(int sock, struct block *from_block, size_t total_blocks)
+int giveme_network_upload_chain(struct network_connection_data *conn, struct block *from_block, size_t total_blocks)
 {
-    giveme_lock_chain();
+    int res = 0;
+    struct giveme_dataexchange_tcp_packet packet;
+    packet.type = GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_CHAIN;
+    res = giveme_tcp_dataexchange_send_packet(conn->sock, &packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to send sending chain packet\n", __FUNCTION__);
+        goto out;
+    }
+
     giveme_blockchain_begin_crawl(from_block->hash, NULL);
 
     struct block *block = giveme_blockchain_crawl_next(0);
     size_t count = 0;
     while (block && count <= total_blocks)
     {
-        int res = giveme_tcp_send_bytes(sock, block, sizeof(struct block));
+        int res = giveme_tcp_send_bytes(conn->sock, block, sizeof(struct block));
         if (res < 0)
         {
             giveme_log("%s failed to send block during upload\n", __FUNCTION__);
@@ -638,7 +769,8 @@ void giveme_network_upload_chain(int sock, struct block *from_block, size_t tota
         block = giveme_blockchain_crawl_next(0);
     }
 
-    giveme_unlock_chain();
+out:
+    return res;
 }
 
 void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet, struct network_connection *connection)
@@ -653,67 +785,101 @@ void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet,
 
     if (block && blocks_left_to_end > 0)
     {
-        giveme_log("%s we have a larger blockchain than the requester we will now send our chain to %s\n", __FUNCTION__, giveme_connection_ip(connection));
-
-        struct sockaddr_in sevr_addr;
-        int res = giveme_tcp_network_listen(&sevr_addr, GIVEME_NETWORK_TCP_DATA_EXCHANGE_LISTEN_TIMEOUT, GIVEME_TCP_DATA_EXCHANGE_PORT, 1);
-        if (res < 0)
-        {
-            giveme_log("%s failed to start data exchange network\n", __FUNCTION__);
-            goto out;
-        }
-
-        int server_sock = res;
-
-
         struct giveme_tcp_packet res_packet = {};
         res_packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE;
         res_packet.update_chain_response.blocks_left_to_end = blocks_left_to_end;
         res_packet.update_chain_response.data_port = GIVEME_TCP_DATA_EXCHANGE_PORT;
         memcpy(res_packet.update_chain_response.last_hash, last_block->hash, sizeof(res_packet.update_chain_response.last_hash));
-        res = giveme_tcp_send_packet(connection, &res_packet);
+        int res = giveme_tcp_send_packet(connection, &res_packet);
         if (res < 0)
         {
             giveme_log("%s failed to send update chain response packet\n", __FUNCTION__);
             goto out;
         }
-
-        int sock = res;
-        struct sockaddr_in client_out;
-        res = giveme_tcp_network_accept(res, &client_out);
-        if (res < 0)
-        {
-            giveme_log("%s failed to accept client\n", __FUNCTION__);
-            goto out;
-        }
-
-        // Okay now that we have accepted the connection lets transfer the chain
-        giveme_network_upload_chain(sock, block, blocks_left_to_end);
-        close(sock);
-        close(server_sock);
     }
 
 out:
     return;
 }
 
-void giveme_network_download_chain(struct in_addr addr, int port, size_t total_blocks)
+int giveme_network_download_chain(struct in_addr addr, int port, const char *start_hash)
 {
+    giveme_lock_chain();
+    int res = 0;
     giveme_log("%s download blockchain from peer\n", __FUNCTION__);
     int sock = giveme_tcp_network_connect(addr, port, 0);
     if (sock < 0)
     {
         giveme_log("%s Failed to connect to peer to download chain\n", __FUNCTION__);
+        res = -1;
+        goto out;
     }
 
-    giveme_lock_chain();
+    // First thing we do is send a request for a chain
+    struct giveme_dataexchange_tcp_packet packet = {};
+    packet.type = GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_CHAIN_REQUEST;
+    strncpy(packet.chain_request.hash, start_hash, sizeof(packet.chain_request.hash));
+    res = giveme_tcp_dataexchange_send_packet(sock, &packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to send dataexchange chain request packet\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    res = giveme_tcp_dataexchange_recv_packet(sock, &packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to read dataexchange chain response packet\n", __FUNCTION__);
+        goto out;
+    }
+
+    if (packet.type == GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_UNABLE_TO_HELP)
+    {
+        giveme_log("%s the peer is not able to help us with this chain request\n");
+        res = -1;
+        goto out;
+    }
+    if (packet.type != GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_CHAIN)
+    {
+        giveme_log("%s we received an unexpected packet type from the peer type=%i\n", __FUNCTION__, packet.type);
+        res = -1;
+        goto out;
+    }
+
+    if (strncmp(packet.sending_chain.start_hash, start_hash, sizeof(packet.sending_chain.start_hash) != 0))
+    {
+        giveme_log("%s start hash we requested and hash they have returned do not match\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    const char *end_hash = packet.sending_chain.last_hash;
+    size_t total_blocks = packet.sending_chain.blocks_left_to_end;
+
+    // We have a mathematically limited amount of blocks, lets ensure the blockchain can support
+    // the amount the peer wants to send
+    if (!giveme_blockchain_can_add_blocks(total_blocks))
+    {
+        giveme_log("%s the peer is trying to send more blocks than is mathematically allowed, its possible hes an attacker. We will not download his chain\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
     for (size_t i = 0; i < total_blocks; i++)
     {
         struct block block;
         if (giveme_tcp_recv_bytes(sock, &block, sizeof(struct block)) < 0)
         {
             giveme_log("%s failed to read a block from the chain\n", __FUNCTION__);
+            res = -1;
             goto out;
+        }
+
+        if (i == 0)
+        {
+            // We wish to ignore the first block as we know about it already
+            continue;
         }
 
         // Now we have a block lets add it to our blockchain
@@ -721,19 +887,27 @@ void giveme_network_download_chain(struct in_addr addr, int port, size_t total_b
         if (res < 0)
         {
             giveme_log("%s failed to add a new block to our blockchain\n", __FUNCTION__);
+            res = -1;
             goto out;
         }
     }
 out:
     giveme_unlock_chain();
+
+    return res;
 }
 
 void giveme_network_packet_handle_update_chain_response(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
-    giveme_log("%s received packet for update chain\n");
+    giveme_log("%s received packet for update chain will download new chain\n", __FUNCTION__);
     size_t blocks_to_end = packet->update_chain_response.blocks_left_to_end;
     int port = packet->update_chain_response.data_port;
-    giveme_network_download_chain(connection->data->addr.sin_addr, port, blocks_to_end);
+    const char *start_hash = packet->update_chain_response.start_hash;
+    int res = giveme_network_download_chain(connection->data->addr.sin_addr, port, start_hash);
+    if (res < 0)
+    {
+        giveme_log("%s failed to download blockchain\n", __FUNCTION__);
+    }
 }
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
@@ -867,7 +1041,6 @@ void giveme_network_update_chain()
     memcpy(update_chain_packet.update_chain.last_hash, giveme_blockchain_back()->hash, sizeof(update_chain_packet.update_chain.last_hash));
     giveme_unlock_chain();
     giveme_network_broadcast(&update_chain_packet);
-
 }
 
 int giveme_network_make_block_if_possible()

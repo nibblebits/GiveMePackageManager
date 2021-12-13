@@ -35,6 +35,43 @@ struct network_connection
 
 enum
 {
+    GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_CHAIN_REQUEST,
+    GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_UNABLE_TO_HELP,
+    GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_CHAIN,
+};
+
+struct giveme_dataexchange_tcp_packet
+{
+    int type;
+    union
+    {
+        struct giveme_dataexchange_chain_request
+        {
+            // Requesting hash - until end of chain
+            char hash[SHA256_STRING_LENGTH];
+        } chain_request;
+
+        struct giveme_dataexchange_unable_to_help
+        {
+
+        } unable_to_help;
+
+        struct giveme_dataexchange_sending_chain
+        {
+            // The total blocks that need to be received before the chain is updated.
+            size_t blocks_left_to_end;
+
+            //  The hash of the final block we are sending.
+            char last_hash[SHA256_STRING_LENGTH];
+
+            // The start hash where the chain is sent from
+            char start_hash[SHA256_STRING_LENGTH];
+
+        } sending_chain;
+    };
+};
+enum
+{
     GIVEME_NETWORK_TCP_PACKET_TYPE_PING,
     GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE,
     GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY,
@@ -80,6 +117,8 @@ struct giveme_tcp_packet
 
             //  Last hash of this blockchain
             char last_hash[SHA256_STRING_LENGTH];
+            // The start hash where the chain is sent from
+            char start_hash[SHA256_STRING_LENGTH];
 
             // The port the receiver should connect to if they want to receive the chain
             int data_port;
@@ -124,10 +163,13 @@ struct network
     struct sockaddr_in listen_address;
     int listen_socket;
 
+    struct sockaddr_in dataexchange_listen_address;
+    int dataexchange_listen_socket;
+
     // The timestamp for when we last sent a block during our current session
     // Equal to zero on startup.
     time_t last_block_send;
-    
+
     // The last time we requested the most up to date chain
     time_t last_chain_update_request;
 };

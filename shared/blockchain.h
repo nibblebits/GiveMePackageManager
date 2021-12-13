@@ -202,4 +202,13 @@ struct key *giveme_blockchain_get_verifier_key();
  */
 size_t giveme_blockchain_max_allowed_blocks_for_now();
 
+/**
+ * @brief Returns true if we are able to add the amount of blocks provided
+ * 
+ * @param amount 
+ * @return true 
+ * @return false 
+ */
+bool giveme_blockchain_can_add_blocks(size_t amount);
+
 #endif
