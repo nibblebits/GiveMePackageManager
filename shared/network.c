@@ -30,7 +30,7 @@ int giveme_network_connection_thread(struct queued_work *work);
 int giveme_network_process_thread(struct queued_work *work);
 bool giveme_network_connection_connected(struct network_connection *connection);
 int giveme_tcp_dataexchange_send_packet(int client, struct giveme_dataexchange_tcp_packet *packet);
-int giveme_network_upload_chain(struct network_connection_data *conn, struct block *from_block, size_t total_blocks);
+int giveme_network_upload_chain(struct network_connection_data *conn, struct block *from_block, struct block* end_block, size_t total_blocks);
 int giveme_tcp_dataexchange_recv_packet(int client, struct giveme_dataexchange_tcp_packet *packet);
 struct network_connection_data *giveme_network_connection_data_new();
 int giveme_tcp_network_accept(int sock, struct sockaddr_in *client_out);
@@ -172,8 +172,9 @@ int giveme_network_dataexchange_handle_chain_request(struct giveme_dataexchange_
         goto out;
     }
 
+    struct block* end_block = giveme_blockchain_back();
     // We have the block we will send it to them.
-    res = giveme_network_upload_chain(conn, block, blocks_left_to_end);
+    res = giveme_network_upload_chain(conn, block, end_block, blocks_left_to_end);
     if (res < 0)
     {
         giveme_log("%s unable to upload chain\n");
@@ -742,11 +743,18 @@ void giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packe
     giveme_blockchain_add_block(&packet->verified_block.block);
 }
 
-int giveme_network_upload_chain(struct network_connection_data *conn, struct block *from_block, size_t total_blocks)
+int giveme_network_upload_chain(struct network_connection_data *conn, struct block *from_block, struct block* end_block, size_t total_blocks)
 {
     int res = 0;
+    if (!from_block || !end_block)
+    {
+        return -1;
+    }
+    
     struct giveme_dataexchange_tcp_packet packet;
     packet.type = GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_CHAIN;
+    strncpy(packet.sending_chain.start_hash, from_block->hash, sizeof(packet.sending_chain.start_hash));
+    packet.sending_chain.blocks_left_to_end = total_blocks;
     res = giveme_tcp_dataexchange_send_packet(conn->sock, &packet);
     if (res < 0)
     {
