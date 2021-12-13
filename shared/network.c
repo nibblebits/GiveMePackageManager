@@ -665,10 +665,6 @@ void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet,
 
         int server_sock = res;
 
-        if (pthread_mutex_lock(&connection->lock) < 0)
-        {
-            giveme_log("%s could not lock connection\n", __FUNCTION__);
-        }
 
         struct giveme_tcp_packet res_packet = {};
         res_packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE;
@@ -679,11 +675,8 @@ void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet,
         if (res < 0)
         {
             giveme_log("%s failed to send update chain response packet\n", __FUNCTION__);
-            pthread_mutex_unlock(&connection->lock);
             goto out;
         }
-
-        pthread_mutex_unlock(&connection->lock);
 
         int sock = res;
         struct sockaddr_in client_out;
