@@ -1061,8 +1061,9 @@ void giveme_network_update_chain()
     struct giveme_tcp_packet update_chain_packet;
     update_chain_packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN;
     memcpy(update_chain_packet.update_chain.last_hash, giveme_blockchain_back()->hash, sizeof(update_chain_packet.update_chain.last_hash));
-    giveme_network_broadcast(&update_chain_packet);
     giveme_unlock_chain();
+
+    giveme_network_broadcast(&update_chain_packet);
 }
 
 int giveme_network_make_block_if_possible()
