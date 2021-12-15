@@ -481,16 +481,18 @@ struct network_connection *giveme_network_connection_find_slot(pthread_mutex_t *
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-      //  pthread_mutex_lock(&network.connections[i].lock);
+        if(pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
+            continue;
+            
         if (network.connections[i].data == NULL)
         {
             // Since we found a free slot we expect the caller to unlock the mutex
             // we tell the caller what the lock is so they know they have to unlock it.
-         //   *lock_to_unlock = &network.connections[i].lock;
+            *lock_to_unlock = &network.connections[i].lock;
 
             return &network.connections[i];
         }
-       // pthread_mutex_unlock(&network.connections[i].lock);
+        pthread_mutex_unlock(&network.connections[i].lock);
     }
 
     return NULL;
@@ -507,7 +509,7 @@ int giveme_network_connection_add(struct network_connection_data *data)
 
     conn_slot->data = data;
     network.total_connected++;
-  //  pthread_mutex_unlock(lock_to_unlock);
+    pthread_mutex_unlock(lock_to_unlock);
 
     return 0;
 }
@@ -624,7 +626,6 @@ int giveme_network_connect_to_ip(struct in_addr ip)
     {
         return 1;
     }
-    giveme_log("%s test\n", __FUNCTION__);
     return giveme_tcp_network_connect(ip, GIVEME_TCP_PORT, GIVEME_CONNECT_FLAG_ADD_TO_CONNECTIONS) < 0 ? -1 : 0;
 }
 int giveme_network_connect()
