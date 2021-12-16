@@ -510,6 +510,7 @@ int giveme_network_connection_add(struct network_connection_data *data)
     conn_slot->data = data;
     pthread_mutex_unlock(lock_to_unlock);
 
+
     network.total_connected++;
 
     return 0;
@@ -746,8 +747,15 @@ void giveme_network_packet_handle_publish_key(struct giveme_tcp_packet *packet, 
 
 void giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
+    if (time(NULL) - network.last_block_receive < GIVEME_SECONDS_TO_MAKE_BLOCK)
+    {
+        // We already have made the block for this cycle
+        giveme_log("%s verified block has been resent to us, we will ignore it as we already registered a block this cycle\n", __FUNCTION__);
+        return;
+    }
     giveme_log("%s new verified block discovered, attempting to add to chain\n", __FUNCTION__);
     giveme_blockchain_add_block(&packet->verified_block.block);
+    network.last_block_receive = time(NULL);
 }
 
 int giveme_network_upload_chain(struct network_connection_data *conn, struct block *from_block, struct block *end_block, size_t total_blocks)
