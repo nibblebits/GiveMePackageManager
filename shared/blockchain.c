@@ -65,7 +65,7 @@ struct key* giveme_blockchain_get_verifier_key()
     struct block* last_block = giveme_blockchain_back();
     // The current five minute block since 1970s
     time_t current_five_minute_block = time(NULL) / GIVEME_SECONDS_TO_MAKE_BLOCK;
-    int next_verifier_index = (current_five_minute_block+(unsigned long)last_block->data.nounce) % total_verifiers-1;
+    int next_verifier_index = (current_five_minute_block) % total_verifiers-1;
     return vector_at(blockchain.public_keys, next_verifier_index);
 }
 
