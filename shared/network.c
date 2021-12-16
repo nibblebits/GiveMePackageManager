@@ -891,7 +891,7 @@ int giveme_network_download_chain(struct in_addr addr, int port, const char *sta
         goto out;
     }
 
-    for (size_t i = 0; i < total_blocks; i++)
+    for (size_t i = 0; i <= total_blocks; i++)
     {
         struct block block;
         giveme_log("%s downloading block %i\n", __FUNCTION__, i);
