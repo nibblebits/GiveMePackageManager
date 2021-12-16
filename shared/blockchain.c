@@ -32,7 +32,6 @@ void giveme_lock_chain()
 
 void giveme_unlock_chain()
 {
-    return;
     pthread_mutex_unlock(&blockchain_lock);
 }
 
