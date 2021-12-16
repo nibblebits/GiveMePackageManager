@@ -65,7 +65,8 @@ struct key* giveme_blockchain_get_verifier_key()
     struct block* last_block = giveme_blockchain_back();
     // The current five minute block since 1970s
     time_t current_five_minute_block = time(NULL) / GIVEME_SECONDS_TO_MAKE_BLOCK;
-    int next_verifier_index = ((current_five_minute_block) % (total_verifiers))-1;
+    long aligned_mod = (4096 - current_five_minute_block % 4096) % 4096;
+    int next_verifier_index = ((aligned_mod) % (total_verifiers))-1;
     if (next_verifier_index < 0)
     {
         next_verifier_index = 0;
