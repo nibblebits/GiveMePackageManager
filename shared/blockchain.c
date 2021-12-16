@@ -62,16 +62,9 @@ struct key* giveme_blockchain_get_verifier_key()
     if (total_verifiers <= 0)
         return NULL;
     
-    struct block* last_block = giveme_blockchain_back();
+    size_t total_blocks = blockchain.total;
     // The current five minute block since 1970s
-    time_t current_five_minute_block = time(NULL) / GIVEME_SECONDS_TO_MAKE_BLOCK;
-    long aligned_mod = (4096 - current_five_minute_block % 4096) % 4096;
-    int next_verifier_index = ((aligned_mod) % (total_verifiers))-1;
-    if (next_verifier_index < 0)
-    {
-        next_verifier_index = 0;
-    }
-
+    int next_verifier_index = (total_blocks % total_verifiers);
     return vector_at(blockchain.public_keys, next_verifier_index);
 }
 
