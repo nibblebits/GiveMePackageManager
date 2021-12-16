@@ -1099,6 +1099,7 @@ int giveme_network_make_block_if_possible()
             goto out;
         }
 
+        giveme_log("%s validator expected key=%s\n", __FUNCTION__, key->key);
         // Are we the one who should be verifying the block?
         if (key_cmp(key, giveme_public_key()))
         {
