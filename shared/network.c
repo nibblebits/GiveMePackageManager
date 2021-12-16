@@ -508,8 +508,9 @@ int giveme_network_connection_add(struct network_connection_data *data)
     }
 
     conn_slot->data = data;
-    network.total_connected++;
     pthread_mutex_unlock(lock_to_unlock);
+
+    network.total_connected++;
 
     return 0;
 }

@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <stdatomic.h>
 
 #define GIVEME_RECV_PACKET_OKAY 0
 #define GIVEME_RECV_PACKET_UNEXPECTED -1
@@ -148,7 +149,7 @@ struct network
     pthread_mutex_t ip_address_lock;
 
     struct network_connection connections[GIVEME_TCP_SERVER_MAX_CONNECTIONS];
-    size_t total_connected;
+    atomic_int total_connected;
 
     struct network_transactions
     {
