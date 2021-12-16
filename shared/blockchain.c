@@ -11,6 +11,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <linux/limits.h>
+#include <assert.h>
 #include "vector.h"
 #include "network.h"
 #include "misc.h"
@@ -61,9 +62,10 @@ struct key* giveme_blockchain_get_verifier_key()
     if (total_verifiers <= 0)
         return NULL;
     
+    struct block* last_block = giveme_blockchain_back();
     // The current five minute block since 1970s
     time_t current_five_minute_block = time(NULL) / GIVEME_SECONDS_TO_MAKE_BLOCK;
-    int next_verifier_index = (total_verifiers-1 % current_five_minute_block);
+    int next_verifier_index = (current_five_minute_block+(unsigned long)last_block->data.nounce) % total_verifiers-1;
     return vector_at(blockchain.public_keys, next_verifier_index);
 }
 
@@ -458,6 +460,8 @@ void giveme_blockchain_create_genesis_block()
 
 void giveme_blockchain_initialize()
 {
+    // Must have a 1 at the end of the value due to the validator algorithm
+    assert(GIVEME_SECONDS_TO_MAKE_BLOCK & 0x01);
     bool blockchain_exists = giveme_blockchain_exists();
     int fd = open(giveme_blockchain_path(), O_RDWR | O_CREAT, (mode_t)0600);
     if (!blockchain_exists)
