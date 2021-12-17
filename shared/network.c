@@ -481,9 +481,9 @@ struct network_connection *giveme_network_connection_find_slot(pthread_mutex_t *
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-        if(pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
+        if (pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
             continue;
-            
+
         if (network.connections[i].data == NULL)
         {
             // Since we found a free slot we expect the caller to unlock the mutex
@@ -509,7 +509,6 @@ int giveme_network_connection_add(struct network_connection_data *data)
 
     conn_slot->data = data;
     pthread_mutex_unlock(lock_to_unlock);
-
 
     network.total_connected++;
 
@@ -939,6 +938,8 @@ void giveme_network_packet_handle_update_chain_response(struct giveme_tcp_packet
     }
 
     giveme_unlock_chain();
+    giveme_blockchain_give_ready_signal();
+    network.chain_requesting_update = false;
 }
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
@@ -1133,12 +1134,21 @@ int giveme_network_process_thread(struct queued_work *work)
     while (1)
     {
         giveme_network_ping();
-        if (network.total_connected > 0 && (time(NULL) - network.last_chain_update_request) > GIVEME_NETWORK_UPDATE_CHANGE_REQUEST_SECONDS)
+        if (network.total_connected > 0 && (time(NULL) - network.last_chain_update_request) > GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS)
         {
             // Let's update our chain to the latest one
             giveme_network_update_chain();
             network.last_chain_update_request = time(NULL);
+            network.chain_requesting_update = true;
         }
+        else if (network.chain_requesting_update && time(NULL) - network.last_chain_update_request > 20)
+        {
+            // Nobody updated the chain and its been twenty seconds?
+            // Then we are probably up to date... lets give the blockchain ready signal..
+            giveme_blockchain_give_ready_signal();
+            network.chain_requesting_update = false;
+        }
+
         giveme_network_packets_process();
         giveme_network_make_block_if_possible();
         sleep(1);
@@ -1215,7 +1225,8 @@ void giveme_network_initialize()
 
     // To give some time for the IP's to be added before we get the most up to date blockchain
     // We will set the last request time so that it will trigger in 30 seconds
-    network.last_chain_update_request = time(NULL) - GIVEME_NETWORK_UPDATE_CHANGE_REQUEST_SECONDS + 30;
+    network.chain_requesting_update = false;
+    network.last_chain_update_request = time(NULL) - GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS + 30;
 out:
     if (res < 0)
     {

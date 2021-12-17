@@ -175,6 +175,7 @@ struct network
 
     // The last time we requested the most up to date chain
     atomic_long last_chain_update_request;
+    atomic_bool chain_requesting_update;
 };
 
 void giveme_network_initialize();

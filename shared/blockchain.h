@@ -2,6 +2,7 @@
 #define GIVEME_BLOCKCHAIN_H
 #include <stdbool.h>
 #include <sys/types.h>
+#include <semaphore.h>
 #include "sha256.h"
 #include "config.h"
 #include "misc.h"
@@ -74,6 +75,10 @@ struct blockchain
 
     // Vector of struct giveme_tcp_packet_publish_key* for all published public keys on this blockchain
     struct vector *public_keys;
+
+    // When the blockchain is being downloaded some may want to wait
+    // until that is done
+    sem_t blockchain_ready_sem;
 };
 
 enum
@@ -210,5 +215,17 @@ size_t giveme_blockchain_max_allowed_blocks_for_now();
  * @return false 
  */
 bool giveme_blockchain_can_add_blocks(size_t amount);
+
+/**
+ * @brief Blocks until the blockchain is ready and up to date
+ * 
+ */
+void giveme_blockchain_wait_until_ready();
+
+/**
+ * @brief Signals everyone waiting that the blockchain is ready
+ * 
+ */
+void giveme_blockchain_give_ready_signal();
 
 #endif

@@ -247,6 +247,9 @@ int giveme_network_server_af_unix_read(int sock)
     if (res < 0)
         return res;
 
+    
+    giveme_blockchain_wait_until_ready();
+
     // We now have a packet lets handle it
     return giveme_network_af_unix_handle_packet(sock, &packet);
 }

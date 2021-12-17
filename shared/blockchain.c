@@ -56,12 +56,12 @@ double giveme_blockchain_balance_change_for_block(struct key *key, struct block 
     return balance_change;
 }
 
-struct key* giveme_blockchain_get_verifier_key()
+struct key *giveme_blockchain_get_verifier_key()
 {
     size_t total_verifiers = vector_count(blockchain.public_keys);
     if (total_verifiers <= 0)
         return NULL;
-    
+
     size_t total_blocks = blockchain.total;
     // The current five minute block since 1970s
     int next_verifier_index = (total_blocks % total_verifiers);
@@ -371,7 +371,6 @@ bool giveme_blockchain_are_we_known()
     return blockchain.me.flags & GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN;
 }
 
-
 void giveme_blockchain_handle_added_block(struct block *block)
 {
     giveme_log("%s handling block with %i transactions.\n", __FUNCTION__, block->data.transactions.total);
@@ -417,7 +416,6 @@ void giveme_blockchain_load_data()
         giveme_blockchain_handle_added_block(block);
         block = giveme_blockchain_crawl_next(0);
     }
-
 }
 
 size_t giveme_blockchain_max_allowed_blocks_for_now()
@@ -428,7 +426,7 @@ size_t giveme_blockchain_max_allowed_blocks_for_now()
 bool giveme_blockchain_can_add_blocks(size_t amount)
 {
     size_t max_allowed_blocks = giveme_blockchain_max_allowed_blocks_for_now();
-    if (blockchain.total+amount > max_allowed_blocks)
+    if (blockchain.total + amount > max_allowed_blocks)
     {
         return false;
     }
@@ -455,6 +453,16 @@ void giveme_blockchain_create_genesis_block()
     {
         giveme_log("%s failed to add genesis block to chain\n", __FUNCTION__);
     }
+}
+
+void giveme_blockchain_wait_until_ready()
+{
+    sem_wait(&blockchain.blockchain_ready_sem);
+}
+
+void giveme_blockchain_give_ready_signal()
+{
+    sem_post(&blockchain.blockchain_ready_sem);
 }
 
 void giveme_blockchain_initialize()
@@ -491,6 +499,12 @@ void giveme_blockchain_initialize()
         // We had no blockchain when this function was called, therefore
         // lets create the genesis block
         giveme_blockchain_create_genesis_block();
+    }
+
+    if (sem_init(&blockchain.blockchain_ready_sem, 0, 0) != 0)
+    {
+        // Error: initialization failed
+        giveme_log("%s failed to initialize blockchain_ready_sem\n");
     }
 
     giveme_blockchain_load_data();
