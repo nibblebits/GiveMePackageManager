@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 #include <semaphore.h>
+#include <stdatomic.h>
 #include "sha256.h"
 #include "config.h"
 #include "misc.h"
@@ -79,6 +80,9 @@ struct blockchain
     // When the blockchain is being downloaded some may want to wait
     // until that is done
     sem_t blockchain_ready_sem;
+
+    // True if the blockchain has been downloaded/confirmed up to date
+    atomic_bool blockchain_ready;
 };
 
 enum

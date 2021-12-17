@@ -457,12 +457,19 @@ void giveme_blockchain_create_genesis_block()
 
 void giveme_blockchain_wait_until_ready()
 {
+    // Blockchain is already ready..
+    if (blockchain.blockchain_ready)
+    {
+        return;
+    }
+
     sem_wait(&blockchain.blockchain_ready_sem);
 }
 
 void giveme_blockchain_give_ready_signal()
 {
     sem_post(&blockchain.blockchain_ready_sem);
+    blockchain.blockchain_ready = true;
 }
 
 void giveme_blockchain_initialize()
