@@ -1091,7 +1091,7 @@ int giveme_network_make_block_if_possible()
     size_t current_time_since_last_tick = time(NULL) % GIVEME_SECONDS_TO_MAKE_BLOCK;
     // We give a leighway of five seconds in regards to the five minutes
     // as sometimes theres delays right.
-    if (current_time_since_last_tick >= 0 && current_time_since_last_tick <= 5)
+    if (current_time_since_last_tick >= 0 && current_time_since_last_tick <= 15)
     {
         giveme_log("%s time to make a new block\n", __FUNCTION__);
         struct key *key = giveme_blockchain_get_verifier_key();
@@ -1127,12 +1127,12 @@ int giveme_network_make_block_if_possible()
     }
 
 
-    if (current_time_since_last_tick >= 6 && current_time_since_last_tick <= 15)
+    if (current_time_since_last_tick >= 16 && current_time_since_last_tick <= 17)
     {
         // Fifteen seconds without even receving the block we was supposed too...
         // The verifier let us down
         giveme_log("%s verifier was a no show\n", __FUNCTION__);
-        network.last_block_processed = time(NULL);
+      //  network.last_block_processed = time(NULL);
     }
     
 
