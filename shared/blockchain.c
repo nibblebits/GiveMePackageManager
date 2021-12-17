@@ -62,9 +62,10 @@ struct key *giveme_blockchain_get_verifier_key()
     if (total_verifiers <= 0)
         return NULL;
 
-    size_t total_blocks = blockchain.total;
+    size_t total_five_minute_chunks_since_1971 = time(NULL) / GIVEME_SECONDS_TO_MAKE_BLOCK;
+    
     // The current five minute block since 1970s
-    int next_verifier_index = (total_blocks % total_verifiers);
+    int next_verifier_index = (total_five_minute_chunks_since_1971 % total_verifiers);
     return vector_at(blockchain.public_keys, next_verifier_index);
 }
 
@@ -545,11 +546,6 @@ int giveme_block_verify(struct block *block)
     return giveme_block_verify_for_chain(&blockchain, block);
 }
 
-int giveme_blockchain_create_blank_block()
-{
-    struct block b = {};
-    return giveme_mine(&b);
-}
 
 int giveme_blockchain_add_block_for_chain(struct blockchain *chain, struct block *block)
 {

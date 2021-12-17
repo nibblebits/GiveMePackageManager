@@ -1131,12 +1131,7 @@ int giveme_network_make_block_if_possible()
     {
         // Fifteen seconds without even receving the block we was supposed too...
         // The verifier let us down
-        giveme_log("%s verifier was a no show creating blank block\n", __FUNCTION__, current_time_since_last_tick);
-        res = giveme_blockchain_create_blank_block();
-        if (res < 0)
-        {
-            giveme_log("%s failed to create blank block\n", __FUNCTION__);
-        }
+        giveme_log("%s verifier was a no show\n", __FUNCTION__);
         network.last_block_processed = time(NULL);
     }
     

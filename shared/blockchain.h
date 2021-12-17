@@ -233,12 +233,5 @@ void giveme_blockchain_wait_until_ready();
  */
 void giveme_blockchain_give_ready_signal();
 
-/**
- * @brief Adds a blank block with no transactions or verifier to the blockchain.
- * 
- * @return int 
- */
-int giveme_blockchain_create_blank_block();
-
 
 #endif
