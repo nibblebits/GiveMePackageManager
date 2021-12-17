@@ -755,6 +755,7 @@ void giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packe
     giveme_log("%s new verified block discovered, attempting to add to chain\n", __FUNCTION__);
     giveme_blockchain_add_block(&packet->verified_block.block);
     network.last_block_receive = time(NULL);
+    network.last_block_processed = time(NULL);
 }
 
 int giveme_network_upload_chain(struct network_connection_data *conn, struct block *from_block, struct block *end_block, size_t total_blocks)
