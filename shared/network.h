@@ -169,7 +169,7 @@ struct network
 
     // The timestamp for when we last sent a block during our current session
     // Equal to zero on startup.
-    atomic_long last_block_send;
+    atomic_long last_block_processed;
 
     atomic_long last_block_receive;
 

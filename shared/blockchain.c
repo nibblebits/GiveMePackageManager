@@ -545,6 +545,12 @@ int giveme_block_verify(struct block *block)
     return giveme_block_verify_for_chain(&blockchain, block);
 }
 
+int giveme_blockchain_create_blank_block()
+{
+    struct block b = {};
+    return giveme_mine(&b);
+}
+
 int giveme_blockchain_add_block_for_chain(struct blockchain *chain, struct block *block)
 {
     int res = giveme_block_verify(block);

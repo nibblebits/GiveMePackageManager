@@ -1078,8 +1078,9 @@ void giveme_network_update_chain()
 
 int giveme_network_make_block_if_possible()
 {
+    int res = 0;
     // Have we already made a block in the last five minutes
-    if (time(NULL) - network.last_block_send < GIVEME_SECONDS_TO_MAKE_BLOCK)
+    if (time(NULL) - network.last_block_processed < GIVEME_SECONDS_TO_MAKE_BLOCK)
     {
         // We already have made the block for this cycle
         return 0;
@@ -1105,7 +1106,7 @@ int giveme_network_make_block_if_possible()
         if (key_cmp(key, giveme_public_key()))
         {
             struct block block;
-            int res = giveme_network_make_block_for_transactions(&network.transactions, &block);
+            res = giveme_network_make_block_for_transactions(&network.transactions, &block);
             if (res < 0)
             {
                 giveme_log("%s failed to make a block for the transaction list\n", __FUNCTION__);
@@ -1121,9 +1122,24 @@ int giveme_network_make_block_if_possible()
 
             // Now we mined the block we are ready to send it
             giveme_network_broadcast_block(&block);
-            network.last_block_send = time(NULL);
+            network.last_block_processed = time(NULL);
         }
     }
+
+
+    if (current_time_since_last_tick >= 6 && current_time_since_last_tick <= 15)
+    {
+        // Fifteen seconds without even receving the block we was supposed too...
+        // The verifier let us down
+        giveme_log("%s verifier was a no show creating blank block\n", __FUNCTION__, current_time_since_last_tick);
+        res = giveme_blockchain_create_blank_block();
+        if (res < 0)
+        {
+            giveme_log("%s failed to create blank block\n", __FUNCTION__);
+        }
+        network.last_block_processed = time(NULL);
+    }
+    
 
 out:
     return 0;
