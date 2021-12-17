@@ -140,6 +140,8 @@ struct block
 struct block *giveme_blockchain_back_safe();
 struct block *giveme_blockchain_back() NO_THREAD_SAFETY;
 
+struct blockchain_individual* giveme_blockchain_me();
+
 void giveme_lock_chain();
 void giveme_unlock_chain();
 int giveme_block_verify(struct block *block) NO_THREAD_SAFETY;

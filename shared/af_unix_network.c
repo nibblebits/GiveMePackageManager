@@ -106,6 +106,33 @@ int giveme_send_message(int sfd, const char *message)
 
     return 0;
 }
+
+struct blockchain_individual giveme_info(int sfd)
+{
+    struct blockchain_individual blank_data = {};
+    struct network_af_unix_packet packet = {};
+    packet.type = NETWORK_AF_UNIX_PACKET_TYPE_MY_INFO;
+    // Send the packet
+    if (giveme_af_unix_write(sfd, &packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
+    {
+        printf("Failed to send packet to server\n");
+        return blank_data;
+    }
+
+    // Let's read back the publish response
+    struct network_af_unix_packet res_packet;
+    if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
+    {
+        printf("Failed to receive response packet from server\n");
+        return blank_data;
+    }
+
+    assert(res_packet.type == NETWORK_AF_UNIX_PACKET_TYPE_INFO_RESPONSE);
+
+
+    return res_packet.info_response.individual;
+}
+
 int giveme_download(int sfd, const char *package_name)
 {
 }
@@ -127,7 +154,7 @@ int giveme_make_fake_blockchain(int sfd, size_t total_blocks)
     return 0;
 }
 
-int giveme_signup(int sfd, const char* name)
+int giveme_signup(int sfd, const char *name)
 {
     struct network_af_unix_packet packet = {};
     packet.type = NETWORK_AF_UNIX_PACKET_TYPE_SIGNUP;
@@ -210,14 +237,23 @@ int giveme_network_af_unix_handle_packet_signup(int sock, struct network_af_unix
     memcpy(&tcp_packet.publish_public_key.pub_key, giveme_public_key(), sizeof(tcp_packet.publish_public_key.pub_key));
     giveme_network_broadcast(&tcp_packet);
 
-
-
     struct network_af_unix_packet res_packet = {};
     res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PUBLISH_PUBLIC_KEY_RESPONSE;
     res_packet.flags |= NETWORK_AF_UNIX_PACKET_FLAG_HAS_FRIENDLY_MESSAGE;
-    sprintf(res_packet.message, "You have successfully signed up to the network as %s\n", packet->signup.name);
+    sprintf(res_packet.message, "You have successfully signed up to the network as %s it can take 5-20 minutes before your able to be recognized and access your own account data with \"giveme info\" \n", packet->signup.name);
     giveme_af_unix_write(sock, &res_packet);
+}
 
+int giveme_network_af_unix_handle_packet_my_info(int sock, struct network_af_unix_packet *packet)
+{
+    struct network_af_unix_packet res_packet = {};
+    res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_INFO_RESPONSE;
+    res_packet.flags |= NETWORK_AF_UNIX_PACKET_FLAG_HAS_FRIENDLY_MESSAGE;
+    giveme_lock_chain();
+    res_packet.info_response.individual = *giveme_blockchain_me();
+    giveme_unlock_chain();
+    giveme_af_unix_write(sock, &res_packet);
+    return 0;
 }
 
 int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet *packet)
@@ -236,6 +272,10 @@ int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet
     case NETWORK_AF_UNIX_PACKET_TYPE_SIGNUP:
         res = giveme_network_af_unix_handle_packet_signup(sock, packet);
         break;
+
+    case NETWORK_AF_UNIX_PACKET_TYPE_MY_INFO:
+        res = giveme_network_af_unix_handle_packet_my_info(sock, packet);
+        break;
     }
     return res;
 }
@@ -247,7 +287,6 @@ int giveme_network_server_af_unix_read(int sock)
     if (res < 0)
         return res;
 
-    
     giveme_blockchain_wait_until_ready();
 
     // We now have a packet lets handle it

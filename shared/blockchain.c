@@ -56,6 +56,11 @@ double giveme_blockchain_balance_change_for_block(struct key *key, struct block 
     return balance_change;
 }
 
+struct blockchain_individual* giveme_blockchain_me()
+{
+    return &blockchain.me;
+}
+
 struct key *giveme_blockchain_get_verifier_key()
 {
     size_t total_verifiers = vector_count(blockchain.public_keys);

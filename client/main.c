@@ -6,7 +6,7 @@
 #include "af_unix_network.h"
 #include "network.h"
 #include "misc.h"
-int publish_package(int argc, char*argv[])
+int publish_package(int argc, char *argv[])
 {
 	if (argc < GIVEME_REQUIRED_PUBLISH_ARGC)
 	{
@@ -16,11 +16,11 @@ int publish_package(int argc, char*argv[])
 
 	int sock = giveme_af_unix_connect();
 	giveme_publish(sock, argv[2], argv[3]);
-	
+
 	return 0;
 }
 
-int signup(int argc, char*argv[])
+int signup(int argc, char *argv[])
 {
 	if (argc < GIVEME_REQUIRED_SIGNUP_ARGC)
 	{
@@ -32,7 +32,7 @@ int signup(int argc, char*argv[])
 	giveme_signup(sock, argv[2]);
 }
 
-int mine_useless_blocks(int argc, char*argv[])
+int mine_useless_blocks(int argc, char *argv[])
 {
 	if (argc < GIVEME_REQUIRED_FAKE_MINING_ARGC)
 	{
@@ -44,6 +44,30 @@ int mine_useless_blocks(int argc, char*argv[])
 	return 0;
 }
 
+int get_my_info(int argc, char *argv[])
+{
+	if (argc < GIVEME_REQUIRED_GET_INFO_ARGC)
+	{
+		printf("Expecting additional arguments to get your information\n");
+		return -1;
+	}
+	int sock = giveme_af_unix_connect();
+	struct blockchain_individual my_info = giveme_info(sock);
+	if (!(my_info.flags & GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN))
+	{
+		printf("Your not known to the blockchain, do \"giveme signup YourNameHere\"\n");
+		return -1;
+	}
+
+	printf("Your account details\n");
+
+	printf("Name: %s\n", my_info.key_data.name);
+	printf("Balance %f\n", my_info.key_data.balance);
+	printf("Public key / Payment Key %s\n", my_info.key_data.key.key);
+	printf("Total blocks verified: %zd\n", my_info.key_data.verified_blocks.total);
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc < GIVEME_MINIMUM_ARGC)
@@ -51,18 +75,22 @@ int main(int argc, char *argv[])
 		printf("You must provide a package name to download\n E.g giveme laravel-framework\n\nTo publish do\ngiveme publish DIRECTORY_PATH\n");
 		return -1;
 	}
-	
+
 	if (S_EQ(argv[1], "publish"))
 	{
 		return publish_package(argc, argv);
 	}
-	else if(S_EQ(argv[1], "mine"))
+	else if (S_EQ(argv[1], "mine"))
 	{
 		return mine_useless_blocks(argc, argv);
 	}
-	else if(S_EQ(argv[1], "signup"))
+	else if (S_EQ(argv[1], "signup"))
 	{
 		return signup(argc, argv);
+	}
+	else if (S_EQ(argv[1], "info"))
+	{
+		return get_my_info(argc, argv);
 	}
 
 	return 0;
