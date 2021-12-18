@@ -756,11 +756,13 @@ void giveme_network_known_hashes_finalize_result()
     {
         if (last_hash->total == 0)
         {
+            giveme_log("%s last hash count for hash %s is now zero removing from known hashes\n", __FUNCTION__, last_hash->total);
             vector_pop_last_peek(network.hashes.hashes);
         }
 
         if (last_hash->total >= famous_hash->total)
         {
+            giveme_log("%s the famous hash has been changed from %s to %s\n", __FUNCTION__, famous_hash->hash, last_hash->hash);
             famous_hash = last_hash;
         }
 
@@ -805,7 +807,12 @@ void giveme_network_update_known_hashes()
         if (!last_hash)
         {
             // Does not exist yet? Okay we need to create it
+            giveme_log("%s new last hash was discovered\n", __FUNCTION__);
             last_hash = giveme_network_create_known_last_hash(peer_hash);
+        }
+        else
+        {
+            giveme_log("%s known last hash %s count is now %i\n", __FUNCTION__, last_hash->hash, last_hash->total+1);
         }
         last_hash->total++;
         pthread_mutex_unlock(&network.connections[i].lock);
