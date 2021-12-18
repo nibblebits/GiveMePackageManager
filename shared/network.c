@@ -34,6 +34,7 @@ int giveme_network_upload_chain(struct network_connection_data *conn, struct blo
 int giveme_tcp_dataexchange_recv_packet(int client, struct giveme_dataexchange_tcp_packet *packet);
 struct network_connection_data *giveme_network_connection_data_new();
 int giveme_tcp_network_accept(int sock, struct sockaddr_in *client_out);
+int giveme_network_clear_transactions(struct network_transactions *transactions);
 
 struct network_transaction **giveme_network_find_network_transaction_slot()
 {
@@ -618,7 +619,6 @@ int giveme_tcp_network_connect(struct in_addr addr, int port, int flags)
     }
     return sockfd;
 }
-
 int giveme_network_connect_to_ip(struct in_addr ip)
 {
     giveme_log("%s connecting to IP address\n", __FUNCTION__);
@@ -711,10 +711,116 @@ void giveme_network_broadcast(struct giveme_tcp_packet *packet)
     }
 }
 
+struct network_last_hash *giveme_network_get_known_last_hash(const char *hash)
+{
+    vector_set_peek_pointer(network.hashes.hashes, 0);
+    struct network_last_hash *last_hash = vector_peek_ptr(network.hashes.hashes);
+    while (last_hash)
+    {
+
+        if (strncmp(last_hash->hash, hash, sizeof(last_hash->hash)) == 0)
+        {
+            return last_hash;
+        }
+        last_hash = vector_peek_ptr(network.hashes.hashes);
+    }
+
+    return NULL;
+}
+
+struct network_last_hash *giveme_network_create_known_last_hash(const char *hash)
+{
+    struct network_last_hash *last_hash = calloc(1, sizeof(struct network_last_hash));
+    strncpy(last_hash->hash, hash, sizeof(last_hash->hash));
+
+    vector_push(network.hashes.hashes, &last_hash);
+    return last_hash;
+}
+
+void giveme_network_known_hashes_lock()
+{
+    pthread_mutex_lock(&network.hashes.lock);
+}
+
+void giveme_network_known_hashes_unlock()
+{
+    pthread_mutex_unlock(&network.hashes.lock);
+}
+
+void giveme_network_known_hashes_finalize_result()
+{
+    vector_set_peek_pointer(network.hashes.hashes, 0);
+    struct network_last_hash *last_hash = vector_peek_ptr(network.hashes.hashes);
+    struct network_last_hash *famous_hash = last_hash;
+    while (last_hash)
+    {
+        if (last_hash->total == 0)
+        {
+            vector_pop_last_peek(network.hashes.hashes);
+        }
+
+        if (last_hash->total >= famous_hash->total)
+        {
+            famous_hash = last_hash;
+        }
+
+        last_hash = vector_peek_ptr(network.hashes.hashes);
+    }
+
+    if (famous_hash)
+    {
+        strncpy(network.hashes.famous_hash, famous_hash->hash, sizeof(network.hashes.famous_hash));
+    }
+}
+
+void giveme_network_reset_known_hash_counts()
+{
+    vector_set_peek_pointer(network.hashes.hashes, 0);
+    struct network_last_hash *last_hash = vector_peek_ptr(network.hashes.hashes);
+    while (last_hash)
+    {
+        last_hash->total = 0;
+        last_hash = vector_peek_ptr(network.hashes.hashes);
+    }
+}
+
+void giveme_network_update_known_hashes()
+{
+    giveme_network_reset_known_hash_counts();
+    for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
+    {
+        if (pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
+        {
+            continue;
+        }
+
+        if (!giveme_network_connection_connected(&network.connections[i]))
+        {
+            pthread_mutex_unlock(&network.connections[i].lock);
+            continue;
+        }
+
+        char *peer_hash = network.connections[i].data->block_hash;
+        struct network_last_hash *last_hash = giveme_network_get_known_last_hash(peer_hash);
+        if (!last_hash)
+        {
+            // Does not exist yet? Okay we need to create it
+            last_hash = giveme_network_create_known_last_hash(peer_hash);
+        }
+        last_hash->total++;
+        pthread_mutex_unlock(&network.connections[i].lock);
+    }
+    giveme_network_known_hashes_finalize_result();
+}
 void giveme_network_ping()
 {
     struct giveme_tcp_packet packet = {};
     packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PING;
+
+    giveme_lock_chain();
+    struct block *last_block = giveme_blockchain_back();
+    memcpy(packet.ping.last_hash, last_block->hash, sizeof(packet.ping.last_hash));
+    giveme_unlock_chain();
     giveme_network_broadcast(&packet);
 }
 
@@ -744,6 +850,14 @@ void giveme_network_packet_handle_publish_key(struct giveme_tcp_packet *packet, 
     }
 }
 
+void giveme_network_clear_network_transactions_of_block(struct block *block)
+{
+    // Clear all transactions.. in future we should loop through block transactions
+    // and only delete those that are in the block as theirs a small chance
+    // we could lose transactions that arent in a block if we clear them all.
+    giveme_network_clear_transactions(&network.transactions);
+}
+
 void giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     if (time(NULL) - network.last_block_receive < GIVEME_SECONDS_TO_MAKE_BLOCK)
@@ -754,6 +868,8 @@ void giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packe
     }
     giveme_log("%s new verified block discovered, attempting to add to chain\n", __FUNCTION__);
     giveme_blockchain_add_block(&packet->verified_block.block);
+
+    giveme_network_clear_network_transactions_of_block(&packet->verified_block.block);
     network.last_block_receive = time(NULL);
     network.last_block_processed = time(NULL);
 }
@@ -942,12 +1058,49 @@ void giveme_network_packet_handle_update_chain_response(struct giveme_tcp_packet
     giveme_blockchain_give_ready_signal();
     network.chain_requesting_update = false;
 }
+
+bool giveme_network_needs_chain_update()
+{
+    struct block *last_block = giveme_blockchain_back();
+    if (!last_block)
+    {
+        return false;
+    }
+
+    if (S_EQ(last_block->hash, network.hashes.famous_hash))
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool giveme_network_needs_chain_update_do_lock()
+{
+    bool needs_update = false;
+    // Nested locks... yikes..
+    giveme_lock_chain();
+    giveme_network_known_hashes_lock();
+    needs_update = !S_EQ(network.hashes.famous_hash, giveme_blockchain_back()->hash);
+    giveme_network_known_hashes_unlock();
+    giveme_unlock_chain();
+
+    return needs_update;
+}
+void giveme_network_packet_handle_ping(struct giveme_tcp_packet *packet, struct network_connection *connection)
+{
+    // Update the last hash of this connecton
+    pthread_mutex_lock(&connection->lock);
+    memcpy(connection->data->block_hash, packet->ping.last_hash, sizeof(connection->data->block_hash));
+    pthread_mutex_unlock(&connection->lock);
+}
+
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     switch (packet->type)
     {
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PING:
-        // We ignore pings, they are used to check peer is still here..
+        giveme_network_packet_handle_ping(packet, connection);
         break;
 
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
@@ -1038,7 +1191,7 @@ int giveme_network_create_block_transaction_for_network_transaction(struct netwo
     return res;
 }
 
-int giveme_network_clear_transactions(struct network_transactions* transactions)
+int giveme_network_clear_transactions(struct network_transactions *transactions)
 {
     for (int i = 0; i < GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK; i++)
     {
@@ -1132,7 +1285,6 @@ int giveme_network_make_block_if_possible()
                 goto out;
             }
 
-
             // Now we mined the block we are ready to send it
             giveme_network_broadcast_block(&block);
 
@@ -1142,15 +1294,13 @@ int giveme_network_make_block_if_possible()
         }
     }
 
-
     if (current_time_since_last_tick >= 16 && current_time_since_last_tick <= 17)
     {
         // Fifteen seconds without even receving the block we was supposed too...
         // The verifier let us down
         giveme_log("%s verifier was a no show\n", __FUNCTION__);
-      //  network.last_block_processed = time(NULL);
+        //  network.last_block_processed = time(NULL);
     }
-    
 
 out:
     return 0;
@@ -1161,7 +1311,9 @@ int giveme_network_process_thread(struct queued_work *work)
     while (1)
     {
         giveme_network_ping();
-        if (network.total_connected > 0 && (time(NULL) - network.last_chain_update_request) > GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS)
+        if (giveme_network_needs_chain_update_do_lock() &&
+            network.total_connected > 0 &&
+            (time(NULL) - network.last_chain_update_request) > GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS)
         {
             // Let's update our chain to the latest one
             giveme_network_update_chain();
@@ -1174,6 +1326,13 @@ int giveme_network_process_thread(struct queued_work *work)
             // Then we are probably up to date... lets give the blockchain ready signal..
             giveme_blockchain_give_ready_signal();
             network.chain_requesting_update = false;
+        }
+        else if (time(NULL) - network.last_known_hashes_update > 5)
+        {
+            giveme_network_known_hashes_lock();
+            giveme_network_update_known_hashes();
+            giveme_network_known_hashes_unlock();
+            network.last_known_hashes_update = time(NULL);
         }
 
         giveme_network_packets_process();
@@ -1236,6 +1395,15 @@ void giveme_network_initialize()
         res = -1;
         goto out;
     }
+
+    if (pthread_mutex_init(&network.hashes.lock, NULL) != 0)
+    {
+        giveme_log("Failed to initialize network hashes mutex\n");
+        res = -1;
+        goto out;
+    }
+
+    network.hashes.hashes = vector_create(sizeof(struct network_last_hash *));
 
     if (pthread_mutex_init(&network.transactions.lock, NULL) != 0)
     {

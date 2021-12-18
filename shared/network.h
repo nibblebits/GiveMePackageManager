@@ -14,6 +14,28 @@
 #define GIVEME_RECV_PACKET_UNEXPECTED -1
 #define GIVEME_RECV_PACKET_WRONG_CHAIN -2
 
+
+struct network_last_hash
+{
+    char hash[SHA256_STRING_LENGTH];
+    // The total number of connected peers who have this hash.
+    size_t total;
+};
+
+/**
+ * @brief Represents all the last hashes on every peer on the blockchain
+ * 
+ */
+struct network_last_hashes
+{
+    // Vector of struct network_last_hash
+    struct vector* hashes;
+    // The last hash everyone agrees on the most
+    // if our blockchain last hash differs from this we will need to ask the network for an updated chain
+    char famous_hash[SHA256_STRING_LENGTH];
+    pthread_mutex_t lock;
+};
+
 enum
 {
     GIVEME_CONNECT_FLAG_ADD_TO_CONNECTIONS = 0b00000001
@@ -26,6 +48,9 @@ struct network_connection_data
 
     // The timestamp of the last communication with this socket.
     time_t last_contact;
+
+    // Most recent block on this peers blockchain
+    char block_hash[SHA256_STRING_LENGTH];
 };
 
 struct network_connection
@@ -78,7 +103,7 @@ enum
     GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY,
     GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK,
     GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN,
-    GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE
+    GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE,
 };
 
 struct block block;
@@ -88,10 +113,16 @@ struct giveme_tcp_packet
 
     union
     {
+
+        struct giveme_tcp_packet_ping
+        {
+            // The last known hash on the blockchain for the peer who pinged us.
+            char last_hash[SHA256_STRING_LENGTH];
+        } ping;
+
         struct giveme_tcp_packet_publish_package
         {
             char name[GIVEME_PACKAGE_NAME_MAX];
-
         } publish_package;
 
         struct giveme_tcp_packet_publish_key
@@ -151,6 +182,11 @@ struct network
     struct network_connection connections[GIVEME_TCP_SERVER_MAX_CONNECTIONS];
     atomic_int total_connected;
 
+    // The last hashes that are known to the network for all connected peers
+    // we want to pull towards one last hash thats equal for everyone
+    // Network will always download the chain to the most popular current last hash.
+    struct network_last_hashes hashes;
+
     struct network_transactions
     {
         struct network_transaction *awaiting[GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK];
@@ -176,6 +212,10 @@ struct network
     // The last time we requested the most up to date chain
     atomic_long last_chain_update_request;
     atomic_bool chain_requesting_update;
+
+    // The last time the network hashes were updated to calculate the most known
+    // last block
+    atomic_long last_known_hashes_update;
 };
 
 void giveme_network_initialize();
