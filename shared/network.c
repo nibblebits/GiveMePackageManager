@@ -75,6 +75,11 @@ out:
     return res;
 }
 
+void giveme_network_delete_transaction(struct network_transaction* transaction)
+{
+    free(transaction);
+}
+
 const char *giveme_connection_ip(struct network_connection *connection)
 {
     if (!giveme_network_connection_connected(connection))
@@ -811,7 +816,7 @@ void giveme_network_update_known_hashes()
             pthread_mutex_unlock(&network.connections[i].lock);
             continue;
         }
-        
+
         struct network_last_hash *last_hash = giveme_network_get_known_last_hash(peer_hash);
         if (!last_hash)
         {
@@ -1211,8 +1216,9 @@ int giveme_network_clear_transactions(struct network_transactions *transactions)
 {
     for (int i = 0; i < GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK; i++)
     {
-        memset(transactions->awaiting[i], 0, sizeof(struct network_transaction));
+        giveme_network_delete_transaction(transactions->awaiting[i]);
     }
+    memset(transactions->awaiting, 0, sizeof(transactions->awaiting));
     transactions->total = 0;
     return 0;
 }
