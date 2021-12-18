@@ -1110,10 +1110,7 @@ bool giveme_network_needs_chain_update_do_lock()
 }
 void giveme_network_packet_handle_ping(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
-    // Update the last hash of this connecton
-    pthread_mutex_lock(&connection->lock);
     memcpy(connection->data->block_hash, packet->ping.last_hash, sizeof(connection->data->block_hash));
-    pthread_mutex_unlock(&connection->lock);
 }
 
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection)
