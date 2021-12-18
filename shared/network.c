@@ -1037,6 +1037,17 @@ int giveme_network_create_block_transaction_for_network_transaction(struct netwo
 
     return res;
 }
+
+int giveme_network_clear_transactions(struct network_transactions* transactions)
+{
+    for (int i = 0; i < GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK; i++)
+    {
+        memset(transactions->awaiting[i], 0, sizeof(struct network_transaction));
+    }
+    transactions->total = 0;
+    return 0;
+}
+
 int giveme_network_make_block_for_transactions(struct network_transactions *transactions, struct block *block_out)
 {
     int res = 0;
@@ -1121,8 +1132,12 @@ int giveme_network_make_block_if_possible()
                 goto out;
             }
 
+
             // Now we mined the block we are ready to send it
             giveme_network_broadcast_block(&block);
+
+            // Clear our transactions
+            giveme_network_clear_transactions(&network.transactions);
             network.last_block_processed = time(NULL);
         }
     }

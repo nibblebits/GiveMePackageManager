@@ -407,9 +407,9 @@ void giveme_blockchain_handle_added_block(struct block *block)
             // This key verified this block lets increment
             blockchain.me.key_data.verified_blocks.total++;
         }
-
-        blockchain.me.key_data.balance += giveme_blockchain_balance_change_for_block(key, block);
     }
+    
+    blockchain.me.key_data.balance += giveme_blockchain_balance_change_for_block(key, block);
 }
 
 void giveme_blockchain_load_data()
