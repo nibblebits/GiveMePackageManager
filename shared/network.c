@@ -807,7 +807,7 @@ void giveme_network_update_known_hashes()
         if (!last_hash)
         {
             // Does not exist yet? Okay we need to create it
-            giveme_log("%s new last hash was discovered\n", __FUNCTION__);
+            giveme_log("%s new last hash was discovered %s\n", __FUNCTION__, peer_hash);
             last_hash = giveme_network_create_known_last_hash(peer_hash);
         }
         else
