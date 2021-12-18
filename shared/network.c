@@ -765,7 +765,7 @@ void giveme_network_known_hashes_finalize_result()
             vector_pop_last_peek(network.hashes.hashes);
         }
 
-        if (last_hash->total >= famous_hash->total)
+        if (memcmp(last_hash->hash, famous_hash->hash, sizeof(last_hash->hash)) != 0 && last_hash->total >= famous_hash->total)
         {
             giveme_log("%s the famous hash has been changed from %s to %s\n", __FUNCTION__, famous_hash->hash, last_hash->hash);
             famous_hash = last_hash;
