@@ -803,6 +803,15 @@ void giveme_network_update_known_hashes()
         }
 
         char *peer_hash = network.connections[i].data->block_hash;
+        char blank_hash[SHA256_STRING_LENGTH] = {};
+        if (memcmp(peer_hash, blank_hash, sizeof(network.connections[i].data->block_hash)) == 0)
+        {
+            // This connection has not received a hash of the last block yet..
+            // lets ignore him
+            pthread_mutex_unlock(&network.connections[i].lock);
+            continue;
+        }
+        
         struct network_last_hash *last_hash = giveme_network_get_known_last_hash(peer_hash);
         if (!last_hash)
         {
