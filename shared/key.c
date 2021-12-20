@@ -36,77 +36,161 @@ bool key_cmp(struct key *key, struct key *key2)
     return strncmp(key->key, key2->key, sizeof(key->key)) == 0;
 }
 
-const char *decrypt_public(struct key *key, const char *input, size_t input_len, size_t *out_size)
+int public_verify(const char *data, size_t size, struct signature *sig_in)
 {
+    int res = 0;
+    ECDSA_SIG *sig = NULL;
+    BIGNUM *pr_sig = NULL;
+    BIGNUM *ps_sig = NULL;
+    EC_KEY *eckey = EC_KEY_new();
+    EC_GROUP *ecgroup = EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1);
+    EC_KEY_set_group(eckey, ecgroup);
+    EC_KEY_set_asn1_flag(eckey, OPENSSL_EC_NAMED_CURVE);
+    BN_CTX *ctx;
+    ctx = BN_CTX_new();
+    EC_POINT *point = EC_POINT_new(ecgroup);
 
-    RSA *pb_rsa = NULL;
-    RSA *p_rsa = NULL;
-
-    BIO *pkeybio = NULL;
-    pkeybio = BIO_new_mem_buf((void *)key->key, key->size);
-    if (pkeybio == NULL)
+    if (EC_POINT_hex2point(ecgroup, giveme_public_key()->key, point, ctx) == NULL)
     {
-        giveme_log("encrypt_public(): Problem allocating buffer");
+        giveme_log("%s failed to set point for public key\n", __FUNCTION__);
+        res = -1;
+        goto out;
     }
 
-    p_rsa = PEM_read_bio_RSAPublicKey(pkeybio, &p_rsa, NULL, NULL);
-    if (p_rsa == NULL)
+    if (EC_KEY_set_public_key(eckey, point) <= 0)
     {
-        char buffer[120];
-        ERR_error_string(ERR_get_error(), buffer);
-        return NULL;
+        giveme_log("%s failed to set public key\n", __FUNCTION__);
+        res = -1;
+        goto out;
     }
 
-    size_t size = RSA_size(p_rsa);
-    *out_size = size;
-
-    char *encrypt = calloc(1, size);
-    int encrypt_len;
-    if ((encrypt_len = RSA_public_decrypt(input_len, (unsigned char *)input,
-                                          (unsigned char *)encrypt, p_rsa, RSA_PKCS1_PADDING)) == -1)
+    sig = ECDSA_SIG_new();
+    if (BN_hex2bn(&pr_sig, sig_in->pr_sig) <= 0)
     {
-        giveme_log("decrypt_public(): problem encrypting with public key");
+        giveme_log("%s failed to convert hex string back BIGINTEGER\n", __FUNCTION__);
+        res = -1;
+        goto out;
     }
 
-    BIO_free(pkeybio);
-    return encrypt;
+    if (BN_hex2bn(&ps_sig,sig_in->ps_sig) <= 0)
+    {
+        giveme_log("%s failed to convert hex string back BIGINTEGER\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+    if (ECDSA_SIG_set0(sig, pr_sig, ps_sig) <= 0)
+    {
+        giveme_log("%s failed to restore signature into BIGNUM\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+
+    if (ECDSA_do_verify(data, size, sig, eckey) <= 0)
+    {
+        giveme_log("%s bad verification with public key err=%s\n", __FUNCTION__, ERR_reason_error_string(ERR_get_error()));
+        res = -1;
+        goto out;
+    }
+
+out:
+    if (sig)
+    {
+        ECDSA_SIG_free(sig);
+    }
+    if (ctx)
+    {
+        BN_CTX_free(ctx);
+    }
+
+    if (point)
+    {
+        EC_POINT_free(point);
+    }
+
+
+    return res;
 }
 
-const char *encrypt_private(const char *input, size_t input_len, size_t *size_out)
+int private_sign(const char *data, size_t size, struct signature *sig_out)
 {
-
-    RSA *pb_rsa = NULL;
-    RSA *p_rsa = NULL;
-
-    BIO *pkeybio = NULL;
-    pkeybio = BIO_new_mem_buf((void *)private_key.key, private_key.size);
-    if (pkeybio == NULL)
+    int res = 0;
+    ECDSA_SIG *sig = NULL;
+    EC_KEY *eckey = EC_KEY_new();
+    EC_GROUP *ecgroup = EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1);
+    EC_KEY_set_group(eckey, ecgroup);
+    EC_KEY_set_asn1_flag(eckey, OPENSSL_EC_NAMED_CURVE);
+    BN_CTX *ctx;
+    ctx = BN_CTX_new();
+    EC_POINT *point = EC_POINT_new(ecgroup);
+    BIGNUM *pnum = NULL;
+    if (BN_hex2bn(&pnum, giveme_private_key()->key) <= 0)
     {
-        giveme_log("encrypt_private(): Problem allocating buffer");
+        giveme_log("%s failed to create big number from private key\n", __FUNCTION__);
+        res = -1;
+        goto out;
     }
 
-    p_rsa = PEM_read_bio_RSAPrivateKey(pkeybio, &p_rsa, NULL, NULL);
-    if (p_rsa == NULL)
+    if (EC_POINT_hex2point(ecgroup, giveme_public_key()->key, point, ctx) == NULL)
     {
-        char buffer[120];
-        ERR_error_string(ERR_get_error(), buffer);
-        return NULL;
+        giveme_log("%s failed to set point for public key\n", __FUNCTION__);
+        res = -1;
+        goto out;
     }
 
-    size_t size = RSA_size(p_rsa);
-    *size_out = size;
-
-    char *encrypt = calloc(1, size);
-
-    int encrypt_len;
-    if ((encrypt_len = RSA_private_encrypt(input_len, (unsigned char *)input,
-                                           (unsigned char *)encrypt, p_rsa, RSA_PKCS1_PADDING)) == -1)
+    if (EC_KEY_set_public_key(eckey, point) <= 0)
     {
-        giveme_log("encrypt_private(): problem encrypting with private key");
+        giveme_log("%s failed to set public key\n", __FUNCTION__);
+        res = -1;
+        goto out;
     }
 
-    BIO_free(pkeybio);
-    return encrypt;
+    if (EC_KEY_set_private_key(eckey, pnum) <= 0)
+    {
+        giveme_log("%s failed to set private key\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    sig = ECDSA_do_sign(data, size, eckey);
+    if (!sig)
+    {
+        giveme_log("%s failed to sign data with key\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+
+    const BIGNUM *sig_pr = NULL;
+    const BIGNUM *sig_ps = NULL;
+    ECDSA_SIG_get0(sig, &sig_pr, &sig_ps);
+
+    char *pr_sig = BN_bn2hex(sig_pr);
+    char *ps_sig = BN_bn2hex(sig_ps);
+
+    bzero(sig_out, sizeof(struct signature));
+    strncpy(sig_out->pr_sig, pr_sig, sizeof(sig_out->pr_sig));
+    strncpy(sig_out->ps_sig, ps_sig, sizeof(sig_out->ps_sig));
+
+    OPENSSL_free(pr_sig);
+    OPENSSL_free(ps_sig);
+
+out:
+    if (sig)
+    {
+        ECDSA_SIG_free(sig);
+    }
+    if (ctx)
+    {
+        BN_CTX_free(ctx);
+    }
+
+    if (point)
+    {
+        EC_POINT_free(point);
+    }
+
+    return res;
 }
 
 const char *giveme_private_key_filepath()
@@ -160,110 +244,44 @@ int giveme_write_public_key(const char *key, size_t size)
     fclose(f);
     return res;
 }
-// int generate_key()
-// {
-
-//     RSA *keypair = NULL;
-//     BIO *bp_public = NULL, *bp_private = NULL;
-
-//     unsigned long e = RSA_F4;
-
-//     BIGNUM *bne = BN_new();
-//     int ret = BN_set_word(bne, e);
-//     if (ret != 1)
-//     {
-//         return -1;
-//     }
-
-//     keypair = RSA_new();
-
-//     ret = RSA_generate_key_ex(keypair, 2048, bne, NULL);
-
-//     BIO *pri = BIO_new(BIO_s_mem());
-//     BIO *pub = BIO_new(BIO_s_mem());
-
-//     PEM_write_bio_RSAPrivateKey(pri, keypair, NULL, NULL, 0, NULL, NULL);
-//     PEM_write_bio_RSAPublicKey(pub, keypair);
-
-//     size_t pri_len = BIO_pending(pri);
-//     size_t pub_len = BIO_pending(pub);
-
-//     char pri_key[pri_len + 1];
-//     char pub_key[pub_len + 1];
-//     bzero(pri_key, sizeof(pri_key));
-//     bzero(pub_key, sizeof(pub_key));
-
-//     BIO_read(pri, pri_key, pri_len);
-//     BIO_read(pub, pub_key, pub_len);
-
-//     giveme_log("Generated RSA keypair for first time use\n");
-//     int res = 0;
-//     res = giveme_write_private_key(pri_key, pri_len);
-//     if (res < 0)
-//     {
-//         giveme_log("Failed to write private key to disk\n");
-//     }
-
-//     res = giveme_write_public_key(pub_key, pub_len);
-//     if (res < 0)
-//     {
-//         giveme_log("Failed to write public key to disk\n");
-//     }
-
-//     giveme_log("Public key: %s\n Private key:%s\n", pub_key, pri_key);
-//     giveme_log("Private key at: %s\n", giveme_private_key_filepath());
-// }
 
 int generate_key()
 {
-    EVP_PKEY *pkey = NULL;
-    EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_X25519, NULL);
-    EVP_PKEY_keygen_init(pctx);
-    EVP_PKEY_keygen(pctx, &pkey);
+    int ret;
+    ECDSA_SIG *sig;
+    EC_KEY *eckey = EC_KEY_new();
+    EC_GROUP *ecgroup = EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1);
+    EC_KEY_set_group(eckey, ecgroup);
+    EC_KEY_set_asn1_flag(eckey, OPENSSL_EC_NAMED_CURVE);
+    BN_CTX *ctx;
+    ctx = BN_CTX_new();
 
-    char pub_key[32] = {};
-    size_t pub_allocated_length = sizeof(pub_key);
-    int res = EVP_PKEY_get_raw_public_key(pkey, pub_key, &pub_allocated_length);
-    if (!res)
+    if (eckey == NULL)
     {
-        giveme_log("%s failed to read public key during generation\n", __FUNCTION__);
+        giveme_log("%S problem creating curve\n", __FUNCTION__);
     }
-    assert(pub_allocated_length == sizeof(pub_key));
-
-    char pub_key_hexed[65] = {};
-    bin2hex(pub_key, sizeof(pub_key), pub_key_hexed);
-
-    char pri_key[32] = {};
-    size_t pri_allocated_length = sizeof(pri_key);
-    res = EVP_PKEY_get_raw_private_key(pkey, pri_key, &pri_allocated_length);
-    if (!res)
+    /* error */
+    if (EC_KEY_generate_key(eckey) == 0)
     {
-        giveme_log("%s failed to read private key during generation\n", __FUNCTION__);
-    }
-    assert(pri_allocated_length == sizeof(pri_key));
-
-    char pri_key_hexed[65] = {};
-    bin2hex(pri_key, sizeof(pri_key), pri_key_hexed);
-
-    EVP_PKEY_CTX_free(pctx);
-
-    giveme_log("%s created new private/public keypair\n", __FUNCTION__);
-    giveme_log("public key=%s\nprivate_key=%s\n", pub_key_hexed, pri_key_hexed);
-
-    giveme_log("Writing keys to file\n");
-    res = giveme_write_private_key(pri_key_hexed, sizeof(pri_key_hexed));
-    if (res < 0)
-    {
-        giveme_log("Failed to write private key to disk\n");
+        giveme_log("%s problem generating key\n", __FUNCTION__);
     }
 
-    res = giveme_write_public_key(pub_key_hexed, sizeof(pub_key_hexed));
-    if (res < 0)
-    {
-        giveme_log("Failed to write public key to disk\n");
-    }
+    //     if(1 != EC_KEY_set_private_key(key, prv)) handleErrors();
+    // if(1 != EC_KEY_set_public_key(key, pub)) handleErrors();
 
-    giveme_log("find saved private key here: %s\n", giveme_private_key_filepath());
+    const BIGNUM *private_key = EC_KEY_get0_private_key(eckey);
+    char *priv_key_hex = BN_bn2hex(private_key);
+    const EC_POINT *pub_key = EC_KEY_get0_public_key(eckey);
+    char *pub_key_hex = EC_POINT_point2hex(ecgroup, pub_key, POINT_CONVERSION_UNCOMPRESSED, ctx);
+    giveme_log("%s public_key=%s\n", __FUNCTION__, pub_key_hex);
+    giveme_log("%s private_key=%s\n", __FUNCTION__, priv_key_hex);
+
+    giveme_write_public_key(pub_key_hex, strlen(pub_key_hex));
+    giveme_write_private_key(priv_key_hex, strlen(priv_key_hex));
+    OPENSSL_free(priv_key_hex);
+    OPENSSL_free(pub_key_hex);
+    EC_KEY_free(eckey);
+    return 0;
 }
 void giveme_load_public_key()
 {
@@ -284,7 +302,8 @@ void giveme_load_public_key()
     {
         giveme_log("Failed to read public key file\n");
     }
-    public_key.size = size;
+    // -1 because of null terminator
+    public_key.size = size - 1;
 }
 
 void giveme_load_private_key()
@@ -309,7 +328,8 @@ void giveme_load_private_key()
         giveme_log("Failed to read private key file\n");
     }
 
-    private_key.size = size;
+    // -1 because of null terminator
+    private_key.size = size - 1;
 }
 
 void giveme_load_keypair()

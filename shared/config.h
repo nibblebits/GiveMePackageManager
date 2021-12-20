@@ -26,7 +26,9 @@
 
 #define GIVEME_MINIMUM_TCP_PACKET_SIZE 1024
 // 64 bytes for hashed key then +1 for null terminator
-#define GIVEME_MAX_KEY_LENGTH 65
+#define GIVEME_MAX_KEY_LENGTH 140
+
+#define GIVEME_MAX_SIGNATURE_PART_LENGTH 65
 
 // We allow a maximum of 1024 transactions per block
 #define GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK 16

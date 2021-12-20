@@ -14,7 +14,6 @@
 #define GIVEME_RECV_PACKET_UNEXPECTED -1
 #define GIVEME_RECV_PACKET_WRONG_CHAIN -2
 
-
 struct network_last_hash
 {
     char hash[SHA256_STRING_LENGTH];
@@ -29,7 +28,7 @@ struct network_last_hash
 struct network_last_hashes
 {
     // Vector of struct network_last_hash
-    struct vector* hashes;
+    struct vector *hashes;
     // The last hash everyone agrees on the most
     // if our blockchain last hash differs from this we will need to ask the network for an updated chain
     char famous_hash[SHA256_STRING_LENGTH];
@@ -106,10 +105,17 @@ enum
     GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE,
 };
 
+
+enum
+{
+    GIVEME_NETWORK_TCP_PACKET_FLAG_SIGNED = 0b00000001
+};
+
 struct block block;
 struct giveme_tcp_packet
 {
     int type;
+    int flags;
 
     union
     {
@@ -155,12 +161,15 @@ struct giveme_tcp_packet
             // The port the receiver should connect to if they want to receive the chain
             int data_port;
         } update_chain_response;
-
         // In case we want to add special packets in the future
         // we should reserve some data in the tcp packet
         // which will also affect the block size
         char s[GIVEME_MINIMUM_TCP_PACKET_SIZE];
     };
+
+    // The public key that signed this packet. Only signed if the GIVEME_NETWORK_TCP_PACKET_FLAG_SIGNED flag
+    // is signed.
+    struct key pub_key;
 };
 
 /**

@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
+#include <assert.h>
 #include "config.h"
 #include "af_unix_network.h"
 #include "network.h"
@@ -38,6 +39,7 @@ void initialize()
 	sigaction(SIGPIPE, &(struct sigaction){SIG_IGN}, NULL);
 	giveme_log_initialize();
 	giveme_load_keypair();
+
 	giveme_thread_pool_init(GIVEME_TOTAL_THREADS);
 	giveme_blockchain_initialize();
 	giveme_network_initialize();
