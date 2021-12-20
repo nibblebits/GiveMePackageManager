@@ -385,7 +385,7 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
 
     // Packet must be signed before being sent
     sha256_data(&packet->data, packet->data_hash, sizeof(packet->data));
-    if(private_sign(packet->data_hash, sizeof(packet->data_hash), &packet->sig) < 0)
+    if(private_sign(packet->data_hash, strlen(packet->data_hash), &packet->sig) < 0)
     {
         giveme_log("%s failed to sign packet with my private key\n", __FUNCTION__);
         return -1;
@@ -435,7 +435,7 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
     // Okay the hash matches, lets ensure the signature agrees. If it agrees then this
     // data was signed by the public key provided to us. Therefore proving that the given
     // public key in this packet wrote it.
-    res = public_verify(packet->data_hash, sizeof(packet->data_hash), &packet->sig);
+    res = public_verify(packet->data_hash, strlen(packet->data_hash), &packet->sig);
     if (res < 0)
     {
         giveme_log("%s public key verification failed, this packet was not signed correctly\n", __FUNCTION__);
