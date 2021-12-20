@@ -40,7 +40,6 @@ void initialize()
 	giveme_log_initialize();
 	giveme_load_keypair();
 
-
 	giveme_thread_pool_init(GIVEME_TOTAL_THREADS);
 	giveme_blockchain_initialize();
 	giveme_network_initialize();
