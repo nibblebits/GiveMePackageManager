@@ -385,7 +385,7 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
 
     // Packet must be signed before being sent
     sha256_data(&packet->data, packet->data_hash, sizeof(packet->data));
-    if(private_sign(packet->data_hash, sizeof(packet->data), &packet->sig) < 0)
+    if(private_sign(packet->data_hash, sizeof(packet->data_hash), &packet->sig) < 0)
     {
         giveme_log("%s failed to sign packet with my private key\n", __FUNCTION__);
         return -1;
