@@ -384,6 +384,7 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
     }
 
     // Packet must be signed before being sent
+    memcpy(&packet->pub_key, giveme_public_key(), sizeof(struct key));
     sha256_data(&packet->data, packet->data_hash, sizeof(packet->data));
     if(private_sign(packet->data_hash, strlen(packet->data_hash), &packet->sig) < 0)
     {
@@ -435,7 +436,7 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
     // Okay the hash matches, lets ensure the signature agrees. If it agrees then this
     // data was signed by the public key provided to us. Therefore proving that the given
     // public key in this packet wrote it.
-    res = public_verify(packet->data_hash, strlen(packet->data_hash), &packet->sig);
+    res = public_verify(&packet->pub_key, packet->data_hash, strlen(packet->data_hash), &packet->sig);
     if (res < 0)
     {
         giveme_log("%s public key verification failed, this packet was not signed correctly\n", __FUNCTION__);
@@ -866,7 +867,7 @@ void giveme_network_update_known_hashes()
 void giveme_network_ping()
 {
     struct giveme_tcp_packet packet = {};
-    packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PING;
+    packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PING;
 
     giveme_lock_chain();
     struct block *last_block = giveme_blockchain_back();
@@ -978,7 +979,7 @@ void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet,
     if (block && blocks_left_to_end > 0)
     {
         struct giveme_tcp_packet res_packet = {};
-        res_packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE;
+        res_packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE;
         res_packet.data.update_chain_response.blocks_left_to_end = blocks_left_to_end;
         res_packet.data.update_chain_response.data_port = GIVEME_TCP_DATA_EXCHANGE_PORT;
         memcpy(res_packet.data.update_chain_response.last_hash, last_block->hash, sizeof(res_packet.data.update_chain_response.last_hash));
@@ -1146,7 +1147,7 @@ void giveme_network_packet_handle_ping(struct giveme_tcp_packet *packet, struct 
 
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
-    switch (packet->type)
+    switch (packet->data.type)
     {
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PING:
         giveme_network_packet_handle_ping(packet, connection);
@@ -1221,7 +1222,7 @@ int giveme_network_create_block_transaction_for_network_transaction(struct netwo
 
     // No transaction provided? then just return zero.
 
-    switch (transaction->packet.type)
+    switch (transaction->packet.data.type)
     {
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
         transaction_out->type = BLOCK_TRANSACTION_TYPE_NEW_PACKAGE;
@@ -1275,7 +1276,7 @@ out:
 void giveme_network_broadcast_block(struct block *block)
 {
     struct giveme_tcp_packet packet = {};
-    packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK;
+    packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK;
     memcpy(&packet.data.verified_block.block, block, sizeof(packet.data.verified_block.block));
     giveme_network_broadcast(&packet);
 }
@@ -1285,7 +1286,7 @@ void giveme_network_update_chain()
     giveme_log("%s asking the network for the most up to date chain\n", __FUNCTION__);
     giveme_lock_chain();
     struct giveme_tcp_packet update_chain_packet;
-    update_chain_packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN;
+    update_chain_packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN;
     memcpy(update_chain_packet.data.update_chain.last_hash, giveme_blockchain_back()->hash, sizeof(update_chain_packet.data.update_chain.last_hash));
     giveme_unlock_chain();
 

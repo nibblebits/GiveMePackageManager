@@ -36,7 +36,7 @@ bool key_cmp(struct key *key, struct key *key2)
     return strncmp(key->key, key2->key, sizeof(key->key)) == 0;
 }
 
-int public_verify(const char *data, size_t size, struct signature *sig_in)
+int public_verify(struct key* public_key, const char *data, size_t size, struct signature *sig_in)
 {
     int res = 0;
     ECDSA_SIG *sig = NULL;
@@ -50,7 +50,7 @@ int public_verify(const char *data, size_t size, struct signature *sig_in)
     ctx = BN_CTX_new();
     EC_POINT *point = EC_POINT_new(ecgroup);
 
-    if (EC_POINT_hex2point(ecgroup, giveme_public_key()->key, point, ctx) == NULL)
+    if (EC_POINT_hex2point(ecgroup, public_key->key, point, ctx) == NULL)
     {
         giveme_log("%s failed to set point for public key\n", __FUNCTION__);
         res = -1;

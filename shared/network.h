@@ -108,10 +108,9 @@ enum
 struct block block;
 struct giveme_tcp_packet
 {
-    int type;
-
     struct packet_data
     {
+        int type;
         int flags;
 
         union

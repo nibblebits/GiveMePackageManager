@@ -108,7 +108,7 @@ int giveme_package_create(const char *path, const char *package_name)
     }
 
     struct giveme_tcp_packet packet = {};
-    packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE;
+    packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE;
     strncpy(packet.data.publish_package.name, package_name, sizeof(packet.data.publish_package.name));
     giveme_network_broadcast(&packet);
     

@@ -17,7 +17,7 @@ struct key
 };
 
 int private_sign(const char *data, size_t size, struct signature* sig_out);
-int public_verify(const char *data, size_t size, struct signature *sig_in);
+int public_verify(struct key* public_key, const char *data, size_t size, struct signature *sig_in);
 
 void giveme_load_keypair();
 struct key* giveme_public_key();

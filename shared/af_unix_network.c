@@ -232,7 +232,7 @@ int giveme_network_af_unix_handle_packet_make_fake_blockchain(int sock, struct n
 int giveme_network_af_unix_handle_packet_signup(int sock, struct network_af_unix_packet *packet)
 {
     struct giveme_tcp_packet tcp_packet = {};
-    tcp_packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY;
+    tcp_packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY;
     strncpy(tcp_packet.data.publish_public_key.name, packet->signup.name, sizeof(tcp_packet.data.publish_package.name));
     memcpy(&tcp_packet.data.publish_public_key.pub_key, giveme_public_key(), sizeof(tcp_packet.data.publish_public_key.pub_key));
     giveme_network_broadcast(&tcp_packet);
