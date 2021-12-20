@@ -105,71 +105,73 @@ enum
     GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE,
 };
 
-
-enum
-{
-    GIVEME_NETWORK_TCP_PACKET_FLAG_SIGNED = 0b00000001
-};
-
 struct block block;
 struct giveme_tcp_packet
 {
     int type;
-    int flags;
 
-    union
+    struct packet_data
     {
+        int flags;
 
-        struct giveme_tcp_packet_ping
+        union
         {
-            // The last known hash on the blockchain for the peer who pinged us.
-            char last_hash[SHA256_STRING_LENGTH];
-        } ping;
 
-        struct giveme_tcp_packet_publish_package
-        {
-            char name[GIVEME_PACKAGE_NAME_MAX];
-        } publish_package;
+            struct giveme_tcp_packet_ping
+            {
+                // The last known hash on the blockchain for the peer who pinged us.
+                char last_hash[SHA256_STRING_LENGTH];
+            } ping;
 
-        struct giveme_tcp_packet_publish_key
-        {
-            struct key pub_key;
-            char name[GIVEME_KEY_NAME_MAX];
-        } publish_public_key;
+            struct giveme_tcp_packet_publish_package
+            {
+                char name[GIVEME_PACKAGE_NAME_MAX];
+            } publish_package;
 
-        struct giveme_tcp_packet_verified_block
-        {
-            struct block block;
-        } verified_block;
+            struct giveme_tcp_packet_publish_key
+            {
+                struct key pub_key;
+                char name[GIVEME_KEY_NAME_MAX];
+            } publish_public_key;
 
-        struct giveme_tcp_packet_update_chain
-        {
-            // The last known hash in our blockchain
-            char last_hash[SHA256_STRING_LENGTH];
-        } update_chain;
+            struct giveme_tcp_packet_verified_block
+            {
+                struct block block;
+            } verified_block;
 
-        struct giveme_tcp_packet_update_chain_response
-        {
-            // The total blocks that need to be received before the chain is updated.
-            size_t blocks_left_to_end;
+            struct giveme_tcp_packet_update_chain
+            {
+                // The last known hash in our blockchain
+                char last_hash[SHA256_STRING_LENGTH];
+            } update_chain;
 
-            //  Last hash of this blockchain
-            char last_hash[SHA256_STRING_LENGTH];
-            // The start hash where the chain is sent from
-            char start_hash[SHA256_STRING_LENGTH];
+            struct giveme_tcp_packet_update_chain_response
+            {
+                // The total blocks that need to be received before the chain is updated.
+                size_t blocks_left_to_end;
 
-            // The port the receiver should connect to if they want to receive the chain
-            int data_port;
-        } update_chain_response;
-        // In case we want to add special packets in the future
-        // we should reserve some data in the tcp packet
-        // which will also affect the block size
-        char s[GIVEME_MINIMUM_TCP_PACKET_SIZE];
-    };
+                //  Last hash of this blockchain
+                char last_hash[SHA256_STRING_LENGTH];
+                // The start hash where the chain is sent from
+                char start_hash[SHA256_STRING_LENGTH];
 
-    // The public key that signed this packet. Only signed if the GIVEME_NETWORK_TCP_PACKET_FLAG_SIGNED flag
-    // is signed.
+                // The port the receiver should connect to if they want to receive the chain
+                int data_port;
+            } update_chain_response;
+            // In case we want to add special packets in the future
+            // we should reserve some data in the tcp packet
+            // which will also affect the block size
+            char s[GIVEME_MINIMUM_TCP_PACKET_SIZE];
+        };
+
+    } data;
+
+    // The hash of the data
+    char data_hash[SHA256_STRING_LENGTH];
+    // THe public key who signed the data hash confirming its state.
     struct key pub_key;
+    // The signature of the resulting sign.
+    struct signature sig;
 };
 
 /**

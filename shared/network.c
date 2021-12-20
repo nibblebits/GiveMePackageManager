@@ -16,6 +16,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
+#include <assert.h>
 
 #include "network.h"
 #include "log.h"
@@ -379,6 +380,14 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
 {
     if (!giveme_network_connection_connected(connection))
     {
+        return -1;
+    }
+
+    // Packet must be signed before being sent
+    sha256_data(&packet->data, packet->data_hash, sizeof(packet->data));
+    if(private_sign(packet->data_hash, sizeof(packet->data), &packet->sig) < 0)
+    {
+        giveme_log("%s failed to sign packet with my private key\n", __FUNCTION__);
         return -1;
     }
 
@@ -834,7 +843,8 @@ void giveme_network_ping()
 
     giveme_lock_chain();
     struct block *last_block = giveme_blockchain_back();
-    memcpy(packet.ping.last_hash, last_block->hash, sizeof(packet.ping.last_hash));
+    assert(last_block);
+    memcpy(packet.data.ping.last_hash, last_block->hash, sizeof(packet.data.ping.last_hash));
     giveme_unlock_chain();
     giveme_network_broadcast(&packet);
 }
@@ -846,7 +856,7 @@ int giveme_network_connection_socket(struct network_connection *connection)
 
 void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
-    giveme_log("%s Publish package request for packet %s by %s\n", __FUNCTION__, packet->publish_package.name, giveme_connection_ip(connection));
+    giveme_log("%s Publish package request for packet %s by %s\n", __FUNCTION__, packet->data.publish_package.name, giveme_connection_ip(connection));
     int res = giveme_network_create_transaction_for_packet(packet);
     if (res < 0)
     {
@@ -857,7 +867,7 @@ void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *pack
 void giveme_network_packet_handle_publish_key(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     // We have a request to publish a public key, lets add it to the transactions
-    giveme_log("%s Publish public key request for packet %s by %s\n", __FUNCTION__, packet->publish_public_key.name, giveme_connection_ip(connection));
+    giveme_log("%s Publish public key request for packet %s by %s\n", __FUNCTION__, packet->data.publish_public_key.name, giveme_connection_ip(connection));
     int res = giveme_network_create_transaction_for_packet(packet);
     if (res < 0)
     {
@@ -882,9 +892,9 @@ void giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packe
         return;
     }
     giveme_log("%s new verified block discovered, attempting to add to chain\n", __FUNCTION__);
-    giveme_blockchain_add_block(&packet->verified_block.block);
+    giveme_blockchain_add_block(&packet->data.verified_block.block);
 
-    giveme_network_clear_network_transactions_of_block(&packet->verified_block.block);
+    giveme_network_clear_network_transactions_of_block(&packet->data.verified_block.block);
     network.last_block_receive = time(NULL);
     network.last_block_processed = time(NULL);
 }
@@ -935,17 +945,17 @@ void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet,
     giveme_log("%s update chain request\n", __FUNCTION__);
 
     size_t blocks_left_to_end = 0;
-    struct block *block = giveme_blockchain_block(packet->update_chain.last_hash, &blocks_left_to_end);
+    struct block *block = giveme_blockchain_block(packet->data.update_chain.last_hash, &blocks_left_to_end);
     struct block *last_block = giveme_blockchain_back();
 
     if (block && blocks_left_to_end > 0)
     {
         struct giveme_tcp_packet res_packet = {};
         res_packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE;
-        res_packet.update_chain_response.blocks_left_to_end = blocks_left_to_end;
-        res_packet.update_chain_response.data_port = GIVEME_TCP_DATA_EXCHANGE_PORT;
-        memcpy(res_packet.update_chain_response.last_hash, last_block->hash, sizeof(res_packet.update_chain_response.last_hash));
-        memcpy(res_packet.update_chain_response.start_hash, block->hash, sizeof(res_packet.update_chain_response.start_hash));
+        res_packet.data.update_chain_response.blocks_left_to_end = blocks_left_to_end;
+        res_packet.data.update_chain_response.data_port = GIVEME_TCP_DATA_EXCHANGE_PORT;
+        memcpy(res_packet.data.update_chain_response.last_hash, last_block->hash, sizeof(res_packet.data.update_chain_response.last_hash));
+        memcpy(res_packet.data.update_chain_response.start_hash, block->hash, sizeof(res_packet.data.update_chain_response.start_hash));
         int res = giveme_tcp_send_packet(connection, &res_packet);
         if (res < 0)
         {
@@ -1060,9 +1070,9 @@ void giveme_network_packet_handle_update_chain_response(struct giveme_tcp_packet
     giveme_log("%s received packet for update chain will download new chain\n", __FUNCTION__);
     giveme_lock_chain();
 
-    size_t blocks_to_end = packet->update_chain_response.blocks_left_to_end;
-    int port = packet->update_chain_response.data_port;
-    const char *start_hash = packet->update_chain_response.start_hash;
+    size_t blocks_to_end = packet->data.update_chain_response.blocks_left_to_end;
+    int port = packet->data.update_chain_response.data_port;
+    const char *start_hash = packet->data.update_chain_response.start_hash;
     int res = giveme_network_download_chain(connection->data->addr.sin_addr, port, start_hash);
     if (res < 0)
     {
@@ -1104,7 +1114,7 @@ bool giveme_network_needs_chain_update_do_lock()
 }
 void giveme_network_packet_handle_ping(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
-    memcpy(connection->data->block_hash, packet->ping.last_hash, sizeof(connection->data->block_hash));
+    memcpy(connection->data->block_hash, packet->data.ping.last_hash, sizeof(connection->data->block_hash));
 }
 
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection)
@@ -1187,13 +1197,13 @@ int giveme_network_create_block_transaction_for_network_transaction(struct netwo
     {
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
         transaction_out->type = BLOCK_TRANSACTION_TYPE_NEW_PACKAGE;
-        strncpy(transaction_out->publish_package.name, transaction->packet.publish_package.name, sizeof(transaction_out->publish_package.name));
+        strncpy(transaction_out->publish_package.name, transaction->packet.data.publish_package.name, sizeof(transaction_out->publish_package.name));
         break;
 
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY:
         transaction_out->type = BLOCK_TRANSACTION_TYPE_NEW_KEY;
-        strncpy(transaction_out->publish_public_key.name, transaction->packet.publish_public_key.name, sizeof(transaction_out->publish_public_key.name));
-        memcpy(&transaction_out->publish_public_key.pub_key, &transaction->packet.publish_public_key.pub_key, sizeof(transaction_out->publish_public_key.pub_key));
+        strncpy(transaction_out->publish_public_key.name, transaction->packet.data.publish_public_key.name, sizeof(transaction_out->publish_public_key.name));
+        memcpy(&transaction_out->publish_public_key.pub_key, &transaction->packet.data.publish_public_key.pub_key, sizeof(transaction_out->publish_public_key.pub_key));
         break;
 
     default:
@@ -1238,7 +1248,7 @@ void giveme_network_broadcast_block(struct block *block)
 {
     struct giveme_tcp_packet packet = {};
     packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK;
-    memcpy(&packet.verified_block.block, block, sizeof(packet.verified_block.block));
+    memcpy(&packet.data.verified_block.block, block, sizeof(packet.data.verified_block.block));
     giveme_network_broadcast(&packet);
 }
 
@@ -1248,7 +1258,7 @@ void giveme_network_update_chain()
     giveme_lock_chain();
     struct giveme_tcp_packet update_chain_packet;
     update_chain_packet.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN;
-    memcpy(update_chain_packet.update_chain.last_hash, giveme_blockchain_back()->hash, sizeof(update_chain_packet.update_chain.last_hash));
+    memcpy(update_chain_packet.data.update_chain.last_hash, giveme_blockchain_back()->hash, sizeof(update_chain_packet.data.update_chain.last_hash));
     giveme_unlock_chain();
 
     giveme_network_broadcast(&update_chain_packet);
