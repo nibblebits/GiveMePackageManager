@@ -420,6 +420,33 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
     {
         connection->data->last_contact = time(NULL);
     }
+
+    // We must ensure the packet was signed by the sender
+    // First rehash the data and compare it with the hash provided
+    char recalculated_hash[SHA256_STRING_LENGTH] = {};
+    sha256_data(&packet->data, recalculated_hash, sizeof(packet->data));
+    if (strncmp(recalculated_hash, packet->data_hash, sizeof(recalculated_hash)) != 0)
+    {
+        giveme_log("%s provided hash does not match the hash we calculated\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    // Okay the hash matches, lets ensure the signature agrees. If it agrees then this
+    // data was signed by the public key provided to us. Therefore proving that the given
+    // public key in this packet wrote it.
+    res = public_verify(packet->data_hash, sizeof(packet->data_hash), &packet->sig);
+    if (res < 0)
+    {
+        giveme_log("%s public key verification failed, this packet was not signed correctly\n", __FUNCTION__);
+        goto out;
+    }
+out:
+    if (res < 0)
+    {
+        // Repsonse below zero? Then NULL the packet we don't want to have any accidental processing of it..
+        bzero(packet, sizeof(struct giveme_tcp_packet));
+    }
     return res;
 }
 
@@ -1177,6 +1204,7 @@ void giveme_network_packets_process()
                 if (giveme_tcp_recv_packet(connection, &packet) < 0)
                 {
                     giveme_log("%s failed to read packet even though data was supposed to be available\n", __FUNCTION__);
+                    goto loop_end;
                 }
                 giveme_network_packet_process(&packet, connection);
             }

@@ -38,9 +38,9 @@
 // Genesis key will be added as a first block when ever anyone first downloads the software
 // A new public key block will automatically be created upon starting the software for
 // the first time, with this gensis key being that block.
-#define GIVEME_BLOCKCHAIN_GENESIS_KEY "FFFF39FFFF08FF19FF2A27FFFF00FFFFFFFFFFFFFF6B73FF6945173222FFFF2E"
-#define GIVEME_BLOCKCHAIN_GENESIS_HASH "024420eae40f605231852b6a1f055cf503b4b0cc381406f52c4a283d552c0349"
-#define GIVEME_BLOCKCHAIN_GENESIS_NOUNCE "15733487"
+#define GIVEME_BLOCKCHAIN_GENESIS_KEY "04B008DE6617103CA76D235E10980C0AE5812D3538AF0732800F387DEAE9D6BCC6A4F42E786ABA216B0C3F508F8C0AE35516984B0FFEDAB80894E5EEFF9FCEF3D9"
+#define GIVEME_BLOCKCHAIN_GENESIS_HASH "055a43a6aa5868390991cc79fb416e6cf07d8c748f3999c586101ee4a998afc2"
+#define GIVEME_BLOCKCHAIN_GENESIS_NOUNCE "3352266"
 
 // Unix timestamp from when blocks are allowed to be added to the chain
 // We can use this timestamp to know how long the blockchain should be.
