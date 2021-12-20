@@ -454,7 +454,7 @@ void giveme_blockchain_create_genesis_block()
     strncpy(key->pub_key.key, GIVEME_BLOCKCHAIN_GENESIS_KEY, sizeof(key->pub_key.key));
     genesis_block.data.nounce = atoi(GIVEME_BLOCKCHAIN_GENESIS_NOUNCE);
     strncpy(genesis_block.hash, GIVEME_BLOCKCHAIN_GENESIS_HASH, sizeof(genesis_block.hash));
-    int res = giveme_blockchain_add_block(&genesis_block);
+    int res = giveme_mine(&genesis_block);
     if (res < 0)
     {
         giveme_log("%s failed to add genesis block to chain\n", __FUNCTION__);
