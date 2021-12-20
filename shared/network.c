@@ -1479,4 +1479,7 @@ out:
     {
         giveme_log("Network initialization failed\n");
     }
+
+    giveme_blockchain_give_ready_signal();
+
 }
