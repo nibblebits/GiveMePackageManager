@@ -1422,7 +1422,11 @@ void giveme_network_update_chain_from_found_peers()
                 // We will not ask the last peer or this peer for a block again, as one of them
                 // lied to us..
                 vector_pop_at_data_address(network.blockchain.peers_with_blocks, peer);
-                vector_pop_at_data_address(network.blockchain.peers_with_blocks, last_peer);
+                if (last_peer)
+                {
+                    vector_pop_at_data_address(network.blockchain.peers_with_blocks, last_peer);
+                }
+                
                 last_peer = NULL;
                 peer = vector_peek(network.blockchain.peers_with_blocks);
                 continue;
