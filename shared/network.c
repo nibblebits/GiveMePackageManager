@@ -1393,6 +1393,7 @@ int giveme_network_update_chain_for_block_from_peer(struct network_connection_da
     // We have the block the peer sent now attempting to add it to the chain
     res = giveme_blockchain_add_block(&block);
 out:
+    close(sock);
     return res;
 }
 void giveme_network_update_chain_from_found_peers()
