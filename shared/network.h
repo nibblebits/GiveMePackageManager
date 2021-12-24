@@ -50,6 +50,8 @@ struct network_connection_data
 
     // Most recent block on this peers blockchain
     char block_hash[SHA256_STRING_LENGTH];
+    // The public key of this connection... No key is valid.
+    struct key key;
 };
 
 struct network_connection

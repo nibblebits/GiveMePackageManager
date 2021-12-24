@@ -419,6 +419,14 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
         return -1;
     }
 
+    if (key_loaded(&connection->data->key) && 
+        key_cmp(giveme_public_key(), &connection->data->key))
+    {
+        // The key of the connection we are sending a packet too is us...
+        // We shouldn't send packets to ourself.. drop it..
+        return -1;
+    }
+
     // Packet must be signed before being sent
     memcpy(&packet->pub_key, giveme_public_key(), sizeof(struct key));
     sha256_data(&packet->data, packet->data_hash, sizeof(packet->data));
@@ -478,6 +486,13 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
         return -1;
     }
 
+    if (key_cmp(giveme_public_key(), &packet->pub_key))
+    {
+        // This packet sent is from ourselves... we dont want to process packets from ourself..
+        // drop it.
+        return -1;
+    }
+    
     int client = connection->data->sock;
     int res = giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_tcp_packet)) > 0 ? 0 : -1;
     if (res == 0)

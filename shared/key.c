@@ -31,6 +31,13 @@ struct key *giveme_private_key()
     return &private_key;
 }
 
+bool key_loaded(struct key* key)
+{
+    struct key blank_key;
+    bzero(&blank_key, sizeof(blank_key));
+    return memcmp(key, &blank_key, sizeof(struct key)) != 0;
+}
+
 bool key_cmp(struct key *key, struct key *key2)
 {
     return strncmp(key->key, key2->key, sizeof(key->key)) == 0;
