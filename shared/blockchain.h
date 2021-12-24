@@ -84,6 +84,17 @@ struct blockchain
 
     // True if the blockchain has been downloaded/confirmed up to date
     atomic_bool blockchain_ready;
+
+    // Temporary data for when changes on the blockchain are to be made
+    struct blockchain_changes_data
+    {
+        bool is_changing;
+        // Index before changes were made.
+        size_t index;
+
+        // The total number of blocks added during this change.
+        size_t blocks_added;
+    } changes;
 };
 
 enum
@@ -235,5 +246,19 @@ void giveme_blockchain_wait_until_ready();
  */
 void giveme_blockchain_give_ready_signal();
 
+
+/**
+ * @brief Returns the current index in the blockchain. I.e if you have 10 blocks index will be 9
+ * 
+ * @return size_t 
+ */
+size_t giveme_blockchain_index();
+
+
+void giveme_blockchain_changes_prepare();
+void giveme_blockchain_changes_discard();
+void giveme_blockchain_changes_apply();
+
+struct block* giveme_blockchain_get_block_with_index(int index);
 
 #endif

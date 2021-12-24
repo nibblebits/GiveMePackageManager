@@ -56,7 +56,7 @@ double giveme_blockchain_balance_change_for_block(struct key *key, struct block 
     return balance_change;
 }
 
-struct blockchain_individual* giveme_blockchain_me()
+struct blockchain_individual *giveme_blockchain_me()
 {
     return &blockchain.me;
 }
@@ -68,7 +68,7 @@ struct key *giveme_blockchain_get_verifier_key()
         return NULL;
 
     size_t total_five_minute_chunks_since_1971 = time(NULL) / GIVEME_SECONDS_TO_MAKE_BLOCK;
-    
+
     // The current five minute block since 1970s
     int next_verifier_index = (total_five_minute_chunks_since_1971 % total_verifiers);
     return vector_at(blockchain.public_keys, next_verifier_index);
@@ -113,6 +113,15 @@ int giveme_blockchain_get_individual(struct key *key, struct blockchain_individu
 
     return (individual_out->flags & GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN) ? 0 : -1;
 }
+
+struct block* giveme_blockchain_get_block_with_index(int index)
+{
+    if (blockchain.total <= index)
+        return NULL;
+    
+    return &blockchain.block[index];
+}
+
 off_t giveme_blockchain_index_for_block_for_chain(struct blockchain *chain, const char *hash)
 {
     struct block blank_block = {};
@@ -408,8 +417,9 @@ void giveme_blockchain_handle_added_block(struct block *block)
             blockchain.me.key_data.verified_blocks.total++;
         }
     }
-    
+
     blockchain.me.key_data.balance += giveme_blockchain_balance_change_for_block(key, block);
+    
 }
 
 void giveme_blockchain_load_data()
@@ -476,6 +486,38 @@ void giveme_blockchain_give_ready_signal()
 {
     sem_post(&blockchain.blockchain_ready_sem);
     blockchain.blockchain_ready = true;
+}
+
+void giveme_blockchain_changes_prepare()
+{
+    assert(!blockchain.changes.is_changing);
+    blockchain.changes.is_changing = true;
+    blockchain.changes.index = giveme_blockchain_index();
+    blockchain.changes.blocks_added = 0;
+}
+
+void giveme_blockchain_changes_discard()
+{
+    assert(blockchain.changes.is_changing);
+    // Discard the chain from the given index.
+    if (blockchain.changes.blocks_added > 0)
+    {
+        memset(&blockchain.block[blockchain.changes.index + 1], 0, sizeof(struct block) * blockchain.changes.blocks_added);
+        blockchain.total = blockchain.changes.index+1;
+    }
+
+    blockchain.changes.is_changing = false;
+}
+
+void giveme_blockchain_changes_apply()
+{
+    assert(blockchain.changes.is_changing);
+    blockchain.changes.is_changing = false;
+}
+
+size_t giveme_blockchain_index()
+{
+    return blockchain.total - 1;
 }
 
 void giveme_blockchain_initialize()
@@ -551,7 +593,6 @@ int giveme_block_verify(struct block *block)
     return giveme_block_verify_for_chain(&blockchain, block);
 }
 
-
 int giveme_blockchain_add_block_for_chain(struct blockchain *chain, struct block *block)
 {
     int res = giveme_block_verify(block);
@@ -561,8 +602,13 @@ int giveme_blockchain_add_block_for_chain(struct blockchain *chain, struct block
     int index = blockchain.total;
     chain->block[index] = *block;
     chain->total++;
-
+    
     giveme_blockchain_handle_added_block(block);
+
+    if (chain->changes.is_changing)
+    {
+        chain->changes.blocks_added++;
+    }
     return res;
 }
 

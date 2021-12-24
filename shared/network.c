@@ -36,6 +36,7 @@ int giveme_tcp_dataexchange_recv_packet(int client, struct giveme_dataexchange_t
 struct network_connection_data *giveme_network_connection_data_new();
 int giveme_tcp_network_accept(int sock, struct sockaddr_in *client_out);
 int giveme_network_clear_transactions(struct network_transactions *transactions);
+int giveme_tcp_send_bytes(int client, void *ptr, size_t amount);
 
 struct network_transaction **giveme_network_find_network_transaction_slot()
 {
@@ -192,6 +193,38 @@ out:
     giveme_unlock_chain();
     return 0;
 }
+
+
+int giveme_network_dataexchange_handle_request_block(struct giveme_dataexchange_tcp_packet* packet, struct network_connection_data* conn)
+{
+    giveme_log("%s block request, block_index=%i\n", __FUNCTION__, packet->request_block.block_index);
+    struct block* block = giveme_blockchain_get_block_with_index(packet->request_block.block_index);
+    if (!block)
+    {
+        giveme_log("%s block with index %i not found", __FUNCTION__, packet->request_block.block_index);
+        return -1;
+    }
+    
+    struct giveme_dataexchange_tcp_packet sending_block_packet = {};
+    sending_block_packet.type = GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_BLOCK;
+    sending_block_packet.sending_block.block_index = packet->request_block.block_index;
+    int res = giveme_tcp_dataexchange_send_packet(conn->sock, &sending_block_packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to send GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_BLOCK packet\n", __FUNCTION__);
+        goto out;
+    }
+
+    // Now lets send the actual block
+    res = giveme_tcp_send_bytes(conn->sock, block, sizeof(struct block));
+    if (res < 0)
+    {
+        giveme_log("%s failed to send block\n", __FUNCTION__);
+        goto out;
+    }
+out:
+    return res;
+}
 int giveme_network_dataexchange_connection(struct queued_work *work)
 {
     int res = 0;
@@ -204,6 +237,10 @@ int giveme_network_dataexchange_connection(struct queued_work *work)
     {
     case GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_CHAIN_REQUEST:
         res = giveme_network_dataexchange_handle_chain_request(&packet, conn);
+        break;
+
+    case GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_REQUEST_BLOCK:
+        res = giveme_network_dataexchange_handle_request_block(&packet, conn);
         break;
 
     default:
@@ -386,7 +423,7 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
     // Packet must be signed before being sent
     memcpy(&packet->pub_key, giveme_public_key(), sizeof(struct key));
     sha256_data(&packet->data, packet->data_hash, sizeof(packet->data));
-    if(private_sign(packet->data_hash, strlen(packet->data_hash), &packet->sig) < 0)
+    if (private_sign(packet->data_hash, strlen(packet->data_hash), &packet->sig) < 0)
     {
         giveme_log("%s failed to sign packet with my private key\n", __FUNCTION__);
         return -1;
@@ -408,20 +445,9 @@ int giveme_tcp_dataexchange_recv_packet(int client, struct giveme_dataexchange_t
     return res;
 }
 
-int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_tcp_packet *packet)
+int giveme_verify_packet(struct giveme_tcp_packet *packet)
 {
-    if (!giveme_network_connection_connected(connection))
-    {
-        return -1;
-    }
-
-    int client = connection->data->sock;
-    int res = giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_tcp_packet)) > 0 ? 0 : -1;
-    if (res == 0)
-    {
-        connection->data->last_contact = time(NULL);
-    }
-
+    int res = 0;
     // We must ensure the packet was signed by the sender
     // First rehash the data and compare it with the hash provided
     char recalculated_hash[SHA256_STRING_LENGTH] = {};
@@ -442,6 +468,26 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
         giveme_log("%s public key verification failed, this packet was not signed correctly\n", __FUNCTION__);
         goto out;
     }
+out:
+    return res;
+}
+
+int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_tcp_packet *packet)
+{
+    if (!giveme_network_connection_connected(connection))
+    {
+        return -1;
+    }
+
+    int client = connection->data->sock;
+    int res = giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_tcp_packet)) > 0 ? 0 : -1;
+    if (res == 0)
+    {
+        connection->data->last_contact = time(NULL);
+    }
+
+    res = giveme_verify_packet(packet);
+
 out:
     if (res < 0)
     {
@@ -913,18 +959,25 @@ void giveme_network_clear_network_transactions_of_block(struct block *block)
 
 void giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
-    if (time(NULL) - network.last_block_receive < GIVEME_SECONDS_TO_MAKE_BLOCK)
+    if (time(NULL) - network.blockchain.last_block_receive < GIVEME_SECONDS_TO_MAKE_BLOCK)
     {
         // We already have made the block for this cycle
         giveme_log("%s verified block has been resent to us, we will ignore it as we already registered a block this cycle\n", __FUNCTION__);
         return;
     }
     giveme_log("%s new verified block discovered, attempting to add to chain\n", __FUNCTION__);
+    // We must ensure that this is the verifiers public key who signed this
+    if (!key_cmp(giveme_blockchain_get_verifier_key(), &packet->pub_key))
+    {
+        giveme_log("%s someone other than the verifier published a block, we will ignore it\n", __FUNCTION__);
+        return;
+    }
+
     giveme_blockchain_add_block(&packet->data.verified_block.block);
 
     giveme_network_clear_network_transactions_of_block(&packet->data.verified_block.block);
-    network.last_block_receive = time(NULL);
-    network.last_block_processed = time(NULL);
+    network.blockchain.last_block_receive = time(NULL);
+    network.blockchain.last_block_processed = time(NULL);
 }
 
 int giveme_network_upload_chain(struct network_connection_data *conn, struct block *from_block, struct block *end_block, size_t total_blocks)
@@ -1095,21 +1148,10 @@ out:
 
 void giveme_network_packet_handle_update_chain_response(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
-    giveme_log("%s received packet for update chain will download new chain\n", __FUNCTION__);
-    giveme_lock_chain();
+    giveme_log("%s received packet for update chain will add to peers to download chain from\n", __FUNCTION__);
 
-    size_t blocks_to_end = packet->data.update_chain_response.blocks_left_to_end;
-    int port = packet->data.update_chain_response.data_port;
-    const char *start_hash = packet->data.update_chain_response.start_hash;
-    int res = giveme_network_download_chain(connection->data->addr.sin_addr, port, start_hash);
-    if (res < 0)
-    {
-        giveme_log("%s failed to download blockchain\n", __FUNCTION__);
-    }
-
-    giveme_unlock_chain();
-    giveme_blockchain_give_ready_signal();
-    network.chain_requesting_update = false;
+    // Let us add this peer to the chain
+    vector_push(network.blockchain.peers_with_blocks, connection->data);
 }
 
 bool giveme_network_needs_chain_update()
@@ -1289,15 +1331,120 @@ void giveme_network_update_chain()
     update_chain_packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN;
     memcpy(update_chain_packet.data.update_chain.last_hash, giveme_blockchain_back()->hash, sizeof(update_chain_packet.data.update_chain.last_hash));
     giveme_unlock_chain();
-
     giveme_network_broadcast(&update_chain_packet);
 }
 
+
+int giveme_network_update_chain_for_block_from_peer(struct network_connection_data *peer, int block_index)
+{
+    int res = 0;
+    giveme_log("%s connecting to peer to download block %i\n", __FUNCTION__, block_index);
+    int sock = giveme_tcp_network_connect(peer->addr.sin_addr, GIVEME_TCP_DATA_EXCHANGE_PORT, 0);
+    if (sock < 0)
+    {
+        giveme_log("%s Failed to connect to peer to download block\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    giveme_log("%s connected, downloading block\n", __FUNCTION__);
+    // First thing we do is send a request for a chain
+    struct giveme_dataexchange_tcp_packet packet = {};
+    packet.type = GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_REQUEST_BLOCK;
+    packet.request_block.block_index = block_index;
+    res = giveme_tcp_dataexchange_send_packet(sock, &packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to send data exchange packet\n", __FUNCTION__);
+        goto out;
+    }
+
+    // Now we expect a resposne
+    res = giveme_tcp_dataexchange_recv_packet(sock, &packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to receive resposne from data exchange server\n", __FUNCTION__);
+        goto out;
+    }
+
+    if (packet.type != GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_BLOCK)
+    {
+        giveme_log("%s unexpected packet type provided for data exchange type=%i\n", __FUNCTION__, packet.type);
+        res = -1;
+        goto out;
+    }
+
+    if (packet.sending_block.block_index != block_index)
+    {
+        giveme_log("%s peer is sending us a block we did not ask for, we want block %i but block %i was provided\n", __FUNCTION__, block_index, packet.sending_block.block_index);
+        res = -1;
+        goto out;
+    }
+
+    // Let's now read the block
+    struct block block = {};
+    res = giveme_tcp_recv_bytes(sock, &block, sizeof(struct block));
+    if (res < 0)
+    {
+        giveme_log("%s peer did not send us a block\n", __FUNCTION__);
+        goto out;
+    }
+
+    // We have the block the peer sent now attempting to add it to the chain
+    res = giveme_blockchain_add_block(&block);
+out:
+    return res;
+}
+void giveme_network_update_chain_from_found_peers()
+{
+    giveme_lock_chain();
+    giveme_blockchain_changes_prepare();
+    int tail_next_index = giveme_blockchain_index() + 1;
+    int current_index = tail_next_index;
+    size_t current_chunk_count = 0;
+    struct network_connection_data* last_peer = NULL;
+    while (giveme_network_needs_chain_update() && vector_count(network.blockchain.peers_with_blocks) > 0)
+    {
+        struct network_connection_data *peer = vector_peek(network.blockchain.peers_with_blocks);
+        while (peer)
+        {
+            int res = giveme_network_update_chain_for_block_from_peer(peer, current_index);
+            if (res < 0)
+            {
+                giveme_log("%s we was sent an unsuitable block.. We will try all over again\n", __FUNCTION__);
+                giveme_blockchain_changes_discard();
+                giveme_blockchain_changes_prepare();
+                current_index = giveme_blockchain_index() + 1;
+                current_chunk_count = 0;
+                // We will not ask the last peer or this peer for a block again, as one of them
+                // lied to us..
+                vector_pop_at_data_address(network.blockchain.peers_with_blocks, peer);
+                vector_pop_at_data_address(network.blockchain.peers_with_blocks, last_peer);
+                last_peer = NULL;
+                peer = vector_peek(network.blockchain.peers_with_blocks);
+                continue;
+            }
+
+            current_chunk_count++;
+            if (current_chunk_count > 100)
+            {
+                giveme_blockchain_changes_apply();
+                giveme_blockchain_changes_prepare();
+                current_chunk_count = 0;
+            }
+            last_peer = peer;
+            peer = vector_peek(network.blockchain.peers_with_blocks);
+        }
+    }
+    giveme_blockchain_changes_apply();
+
+    giveme_unlock_chain();
+}
 int giveme_network_make_block_if_possible()
 {
     int res = 0;
     // Have we already made a block in the last five minutes
-    if (time(NULL) - network.last_block_processed < GIVEME_SECONDS_TO_MAKE_BLOCK)
+    if (time(NULL) - network.blockchain.last_block_processed < GIVEME_SECONDS_TO_MAKE_BLOCK)
     {
         // We already have made the block for this cycle
         return 0;
@@ -1342,7 +1489,7 @@ int giveme_network_make_block_if_possible()
 
             // Clear our transactions
             giveme_network_clear_transactions(&network.transactions);
-            network.last_block_processed = time(NULL);
+            network.blockchain.last_block_processed = time(NULL);
         }
     }
 
@@ -1363,28 +1510,35 @@ int giveme_network_process_thread(struct queued_work *work)
     while (1)
     {
         giveme_network_ping();
-        if (giveme_network_needs_chain_update_do_lock() &&
-            network.total_connected > 0 &&
-            (time(NULL) - network.last_chain_update_request) > GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS)
+        if (network.blockchain.chain_requesting_update && (time(NULL) - network.blockchain.last_chain_update_request) > 30)
+        {
+            // We have given 30 seconds for people to tell us they are able to update our chain...
+            // Now its time to preform the update.
+            giveme_network_update_chain_from_found_peers();
+            network.blockchain.chain_requesting_update = false;
+        }
+        else if (giveme_network_needs_chain_update_do_lock() &&
+                 network.total_connected > 0 &&
+                 (time(NULL) - network.blockchain.last_chain_update_request) > GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS)
         {
             // Let's update our chain to the latest one
             giveme_network_update_chain();
-            network.last_chain_update_request = time(NULL);
-            network.chain_requesting_update = true;
+            network.blockchain.last_chain_update_request = time(NULL);
+            network.blockchain.chain_requesting_update = true;
         }
-        else if (network.chain_requesting_update && time(NULL) - network.last_chain_update_request > 20)
+        else if (network.blockchain.chain_requesting_update && time(NULL) - network.blockchain.last_chain_update_request > 120)
         {
-            // Nobody updated the chain and its been twenty seconds?
+            // Nobody updated the chain and its been 120 seconds?
             // Then we are probably up to date... lets give the blockchain ready signal..
             giveme_blockchain_give_ready_signal();
-            network.chain_requesting_update = false;
+            network.blockchain.chain_requesting_update = false;
         }
-        else if (time(NULL) - network.last_known_hashes_update > 5)
+        else if (time(NULL) - network.blockchain.last_known_hashes_update > 5)
         {
             giveme_network_known_hashes_lock();
             giveme_network_update_known_hashes();
             giveme_network_known_hashes_unlock();
-            network.last_known_hashes_update = time(NULL);
+            network.blockchain.last_known_hashes_update = time(NULL);
         }
 
         giveme_network_packets_process();
@@ -1441,6 +1595,7 @@ void giveme_network_initialize()
     int res = 0;
     memset(&network, 0, sizeof(struct network));
     network.ip_addresses = vector_create(sizeof(struct in_addr));
+    network.blockchain.peers_with_blocks = vector_create(sizeof(struct network_connection_data));
     if (pthread_mutex_init(&network.ip_address_lock, NULL) != 0)
     {
         giveme_log("Failed to initialize ip_address_lock mutex\n");
@@ -1472,14 +1627,11 @@ void giveme_network_initialize()
 
     // To give some time for the IP's to be added before we get the most up to date blockchain
     // We will set the last request time so that it will trigger in 30 seconds
-    network.chain_requesting_update = false;
-    network.last_chain_update_request = time(NULL) - GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS + 30;
+    network.blockchain.chain_requesting_update = false;
+    network.blockchain.last_chain_update_request = time(NULL) - GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS + 30;
 out:
     if (res < 0)
     {
         giveme_log("Network initialization failed\n");
     }
-
-    giveme_blockchain_give_ready_signal();
-
 }

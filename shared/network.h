@@ -63,6 +63,8 @@ enum
     GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_CHAIN_REQUEST,
     GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_UNABLE_TO_HELP,
     GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_CHAIN,
+    GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_REQUEST_BLOCK,
+    GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_BLOCK
 };
 
 struct giveme_dataexchange_tcp_packet
@@ -93,6 +95,23 @@ struct giveme_dataexchange_tcp_packet
             char start_hash[SHA256_STRING_LENGTH];
 
         } sending_chain;
+
+        struct giveme_dataexchange_request_block
+        {
+            // The index of the block on the chain that you want.
+            // We do not allow hashes because the point of requesting blocks
+            // by index is to prevent attacks where fake chains are sent to us.
+            // We can ask 1000s of peers for differnet block indexes and if
+            // we cant add the block to the chain we know they sent us a fake block
+            int block_index;
+        } request_block;
+
+        struct giveme_dataexchange_sending_block
+        {
+            // The block index of the block, following will be one block 
+            int block_index;
+        } sending_block;
+
     };
 };
 enum
@@ -213,19 +232,27 @@ struct network
     struct sockaddr_in dataexchange_listen_address;
     int dataexchange_listen_socket;
 
-    // The timestamp for when we last sent a block during our current session
-    // Equal to zero on startup.
-    atomic_long last_block_processed;
+    struct network_blockchain_data
+    {
+        // Vector of struct network_connection_data. These are the current peers
+        // with blocks we need, during a chain request we will randomly download each block
+        // between them one block at a time.
+        // Rather than download from one peer who could lie to us.
+        struct vector* peers_with_blocks;
 
-    atomic_long last_block_receive;
+        // The timestamp for when we last sent a block during our current session
+        // Equal to zero on startup.
+        atomic_long last_block_processed;
+        atomic_long last_block_receive;
 
-    // The last time we requested the most up to date chain
-    atomic_long last_chain_update_request;
-    atomic_bool chain_requesting_update;
+        // The last time we requested the most up to date chain
+        atomic_bool chain_requesting_update;
+        atomic_long last_chain_update_request;
 
-    // The last time the network hashes were updated to calculate the most known
-    // last block
-    atomic_long last_known_hashes_update;
+        // The last time the network hashes were updated to calculate the most known
+        // last block
+        atomic_long last_known_hashes_update;
+    } blockchain;
 };
 
 void giveme_network_initialize();
