@@ -22,7 +22,7 @@
 #define GIVEME_IP_STRING_SIZE 17
 
 // Must have the last number as 1
-#define GIVEME_SECONDS_TO_MAKE_BLOCK 61
+#define GIVEME_SECONDS_TO_MAKE_BLOCK 121
 
 #define GIVEME_MINIMUM_TCP_PACKET_SIZE 1024
 // 64 bytes for hashed key then +1 for null terminator
@@ -60,8 +60,8 @@
 
 #define GIVEME_NETWORK_TCP_DATA_EXCHANGE_LISTEN_TIMEOUT 10
 
-// Once every 30 minutes we will ask for the most up to date blockchain incase we lagged behind.
-#define GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS 1800
+// Once every minute after block verify we will ask for the most up to date blockchain incase we lagged behind.
+#define GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS GIVEME_SECONDS_TO_MAKE_BLOCK + 60
 
 // Blockchain will resize its self after 1024 blocks, and it will resize to +1024 blocks each time
 #define BLOCKCHAIN_RESIZE_TOTAL_BLOCKS 1024

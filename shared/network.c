@@ -194,17 +194,16 @@ out:
     return 0;
 }
 
-
-int giveme_network_dataexchange_handle_request_block(struct giveme_dataexchange_tcp_packet* packet, struct network_connection_data* conn)
+int giveme_network_dataexchange_handle_request_block(struct giveme_dataexchange_tcp_packet *packet, struct network_connection_data *conn)
 {
     giveme_log("%s block request, block_index=%i\n", __FUNCTION__, packet->request_block.block_index);
-    struct block* block = giveme_blockchain_get_block_with_index(packet->request_block.block_index);
+    struct block *block = giveme_blockchain_get_block_with_index(packet->request_block.block_index);
     if (!block)
     {
         giveme_log("%s block with index %i not found", __FUNCTION__, packet->request_block.block_index);
         return -1;
     }
-    
+
     struct giveme_dataexchange_tcp_packet sending_block_packet = {};
     sending_block_packet.type = GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_BLOCK;
     sending_block_packet.sending_block.block_index = packet->request_block.block_index;
@@ -1334,7 +1333,6 @@ void giveme_network_update_chain()
     giveme_network_broadcast(&update_chain_packet);
 }
 
-
 int giveme_network_update_chain_for_block_from_peer(struct network_connection_data *peer, int block_index)
 {
     int res = 0;
@@ -1404,11 +1402,12 @@ void giveme_network_update_chain_from_found_peers()
     int tail_next_index = giveme_blockchain_index() + 1;
     int current_index = tail_next_index;
     size_t current_chunk_count = 0;
-    struct network_connection_data* last_peer = NULL;
     while (giveme_network_needs_chain_update() && vector_count(network.blockchain.peers_with_blocks) > 0)
     {
         vector_set_peek_pointer(network.blockchain.peers_with_blocks, 0);
         struct network_connection_data *peer = vector_peek(network.blockchain.peers_with_blocks);
+        struct network_connection_data *last_peer = NULL;
+
         while (peer)
         {
             int res = giveme_network_update_chain_for_block_from_peer(peer, current_index);
@@ -1426,13 +1425,13 @@ void giveme_network_update_chain_from_found_peers()
                 {
                     vector_pop_at_data_address(network.blockchain.peers_with_blocks, last_peer);
                 }
-                
                 last_peer = NULL;
                 peer = vector_peek(network.blockchain.peers_with_blocks);
                 continue;
             }
 
             current_chunk_count++;
+            current_index++;
             if (current_chunk_count > 100)
             {
                 giveme_blockchain_changes_apply();
@@ -1476,6 +1475,12 @@ int giveme_network_make_block_if_possible()
         // Are we the one who should be verifying the block?
         if (key_cmp(key, giveme_public_key()))
         {
+            if (!giveme_network_needs_chain_update())
+            {
+                giveme_log("%s we may be the verifier but our chain isnt up to date, therefore we cant make this block\n", __FUNCTION__);
+                goto out;
+            }
+            
             struct block block;
             res = giveme_network_make_block_for_transactions(&network.transactions, &block);
             if (res < 0)
