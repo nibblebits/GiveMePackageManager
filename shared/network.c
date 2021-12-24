@@ -1475,12 +1475,12 @@ int giveme_network_make_block_if_possible()
         // Are we the one who should be verifying the block?
         if (key_cmp(key, giveme_public_key()))
         {
-            if (!giveme_network_needs_chain_update())
+            if (giveme_network_needs_chain_update())
             {
                 giveme_log("%s we may be the verifier but our chain isnt up to date, therefore we cant make this block\n", __FUNCTION__);
                 goto out;
             }
-            
+
             struct block block;
             res = giveme_network_make_block_for_transactions(&network.transactions, &block);
             if (res < 0)
