@@ -1393,6 +1393,7 @@ int giveme_network_update_chain_for_block_from_peer(struct network_connection_da
     // We have the block the peer sent now attempting to add it to the chain
     res = giveme_blockchain_add_block(&block);
 out:
+
     close(sock);
     return res;
 }
@@ -1406,6 +1407,7 @@ void giveme_network_update_chain_from_found_peers()
     struct network_connection_data* last_peer = NULL;
     while (giveme_network_needs_chain_update() && vector_count(network.blockchain.peers_with_blocks) > 0)
     {
+        vector_set_peek_pointer(network.blockchain.peers_with_blocks, 0);
         struct network_connection_data *peer = vector_peek(network.blockchain.peers_with_blocks);
         while (peer)
         {
