@@ -70,8 +70,11 @@ int giveme_network_create_transaction_for_packet(struct giveme_tcp_packet *packe
 
     struct network_transaction *transaction = giveme_network_new_transaction();
     memcpy(&transaction->packet, packet, sizeof(struct giveme_tcp_packet));
+    transaction->created = time(NULL);
+
     *slot = transaction;
     network.transactions.total++;
+
 out:
     pthread_mutex_unlock(&network.transactions.lock);
     return res;
@@ -419,7 +422,7 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
         return -1;
     }
 
-    if (key_loaded(&connection->data->key) && 
+    if (key_loaded(&connection->data->key) &&
         key_cmp(giveme_public_key(), &connection->data->key))
     {
         // The key of the connection we are sending a packet too is us...
@@ -492,7 +495,7 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
         // drop it.
         return -1;
     }
-    
+
     int client = connection->data->sock;
     int res = giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_tcp_packet)) > 0 ? 0 : -1;
     if (res == 0)
@@ -932,7 +935,7 @@ void giveme_network_ping()
     giveme_lock_chain();
     struct block *last_block = giveme_blockchain_back();
     assert(last_block);
-    memcpy(packet.data.ping.last_hash, last_block->hash, sizeof(packet.data.ping.last_hash));
+    memcpy(packet.data.ping.last_hash, giveme_blockchain_block_hash(last_block), sizeof(packet.data.ping.last_hash));
     giveme_unlock_chain();
     giveme_network_broadcast(&packet);
 }
@@ -944,7 +947,15 @@ int giveme_network_connection_socket(struct network_connection *connection)
 
 void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
-    giveme_log("%s Publish package request for packet %s by %s\n", __FUNCTION__, packet->data.publish_package.name, giveme_connection_ip(connection));
+    char tmp_hash[SHA256_STRING_LENGTH];
+    sha256_data(&packet->data.publish_package.data, tmp_hash, sizeof(packet->data.publish_package.data));
+    if (public_verify_key_sig_hash(&packet->data.publish_package.signature, tmp_hash) < 0)
+    {
+        giveme_log("%s the package to be published was incorrectly signed\n", __FUNCTION__);
+        return;
+    }
+
+    giveme_log("%s Publish package request for packet %s by %s\n", __FUNCTION__, packet->data.publish_package.data.name, giveme_connection_ip(connection));
     int res = giveme_network_create_transaction_for_packet(packet);
     if (res < 0)
     {
@@ -1004,8 +1015,8 @@ int giveme_network_upload_chain(struct network_connection_data *conn, struct blo
 
     struct giveme_dataexchange_tcp_packet packet;
     packet.type = GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_CHAIN;
-    strncpy(packet.sending_chain.start_hash, from_block->hash, sizeof(packet.sending_chain.start_hash));
-    strncpy(packet.sending_chain.last_hash, end_block->hash, sizeof(packet.sending_chain.last_hash));
+    strncpy(packet.sending_chain.start_hash, giveme_blockchain_block_hash(from_block), sizeof(packet.sending_chain.start_hash));
+    strncpy(packet.sending_chain.last_hash, giveme_blockchain_block_hash(end_block), sizeof(packet.sending_chain.last_hash));
     packet.sending_chain.blocks_left_to_end = total_blocks;
     res = giveme_tcp_dataexchange_send_packet(conn->sock, &packet);
     if (res < 0)
@@ -1014,7 +1025,7 @@ int giveme_network_upload_chain(struct network_connection_data *conn, struct blo
         goto out;
     }
 
-    giveme_blockchain_begin_crawl(from_block->hash, NULL);
+    giveme_blockchain_begin_crawl(giveme_blockchain_block_hash(from_block), NULL);
 
     struct block *block = giveme_blockchain_crawl_next(0);
     size_t count = 0;
@@ -1049,8 +1060,8 @@ void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet,
         res_packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE;
         res_packet.data.update_chain_response.blocks_left_to_end = blocks_left_to_end;
         res_packet.data.update_chain_response.data_port = GIVEME_TCP_DATA_EXCHANGE_PORT;
-        memcpy(res_packet.data.update_chain_response.last_hash, last_block->hash, sizeof(res_packet.data.update_chain_response.last_hash));
-        memcpy(res_packet.data.update_chain_response.start_hash, block->hash, sizeof(res_packet.data.update_chain_response.start_hash));
+        memcpy(res_packet.data.update_chain_response.last_hash, giveme_blockchain_block_hash(last_block), sizeof(res_packet.data.update_chain_response.last_hash));
+        memcpy(res_packet.data.update_chain_response.start_hash, giveme_blockchain_block_hash(block), sizeof(res_packet.data.update_chain_response.start_hash));
         int res = giveme_tcp_send_packet(connection, &res_packet);
         if (res < 0)
         {
@@ -1176,7 +1187,7 @@ bool giveme_network_needs_chain_update()
         return false;
     }
 
-    if (S_EQ(last_block->hash, network.hashes.famous_hash))
+    if (S_EQ(giveme_blockchain_block_hash(last_block), network.hashes.famous_hash))
     {
         return false;
     }
@@ -1190,7 +1201,7 @@ bool giveme_network_needs_chain_update_do_lock()
     // Nested locks... yikes..
     giveme_lock_chain();
     giveme_network_known_hashes_lock();
-    needs_update = !S_EQ(network.hashes.famous_hash, giveme_blockchain_back()->hash);
+    needs_update = !S_EQ(network.hashes.famous_hash, giveme_blockchain_block_hash(giveme_blockchain_back()));
     giveme_network_known_hashes_unlock();
     giveme_unlock_chain();
 
@@ -1272,6 +1283,23 @@ void giveme_network_packets_process()
     }
 }
 
+int giveme_network_create_block_transaction_for_network_transaction_new_package(struct network_transaction *transaction, struct block_transaction *transaction_out)
+{
+    char tmp_hash[SHA256_STRING_LENGTH];
+    sha256_data(&transaction_out->data.publish_package.data, tmp_hash, sizeof(transaction_out->data.publish_package.data));
+    transaction_out->data.type = BLOCK_TRANSACTION_TYPE_NEW_PACKAGE;
+    memcpy(&transaction_out->data.publish_package.data, &transaction->packet.data.publish_package.data, sizeof(transaction_out->data.publish_package.data));
+    transaction_out->data.publish_package.signature = transaction->packet.data.publish_package.signature;
+
+    if (public_verify_key_sig_hash(&transaction_out->data.publish_package.signature, tmp_hash) < 0)
+    {
+        giveme_log("%s received new package transaction but the package data was signed incorrectly\n", __FUNCTION__);
+        bzero(transaction_out, sizeof(struct block_transaction));
+        return -1;
+    }
+    return 0;
+}
+
 int giveme_network_create_block_transaction_for_network_transaction(struct network_transaction *transaction, struct block_transaction *transaction_out)
 {
     int res = 0;
@@ -1281,20 +1309,20 @@ int giveme_network_create_block_transaction_for_network_transaction(struct netwo
     switch (transaction->packet.data.type)
     {
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
-        transaction_out->type = BLOCK_TRANSACTION_TYPE_NEW_PACKAGE;
-        strncpy(transaction_out->publish_package.name, transaction->packet.data.publish_package.name, sizeof(transaction_out->publish_package.name));
+        res = giveme_network_create_block_transaction_for_network_transaction_new_package(transaction, transaction_out);
         break;
 
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY:
-        transaction_out->type = BLOCK_TRANSACTION_TYPE_NEW_KEY;
-        strncpy(transaction_out->publish_public_key.name, transaction->packet.data.publish_public_key.name, sizeof(transaction_out->publish_public_key.name));
-        memcpy(&transaction_out->publish_public_key.pub_key, &transaction->packet.data.publish_public_key.pub_key, sizeof(transaction_out->publish_public_key.pub_key));
+        transaction_out->data.type = BLOCK_TRANSACTION_TYPE_NEW_KEY;
+        strncpy(transaction_out->data.publish_public_key.name, transaction->packet.data.publish_public_key.name, sizeof(transaction_out->data.publish_public_key.name));
+        memcpy(&transaction_out->data.publish_public_key.pub_key, &transaction->packet.data.publish_public_key.pub_key, sizeof(transaction_out->data.publish_public_key.pub_key));
         break;
 
     default:
         res = -1;
     }
 
+    transaction_out->data.timestamp = transaction->created;
     return res;
 }
 
@@ -1324,7 +1352,7 @@ int giveme_network_make_block_for_transactions(struct network_transactions *tran
         }
     }
 
-    block_out->data.validator_key = *giveme_public_key();
+    block_out->data.timestamp = time(NULL);
 out:
     return res;
 }
@@ -1343,7 +1371,7 @@ void giveme_network_update_chain()
     giveme_lock_chain();
     struct giveme_tcp_packet update_chain_packet;
     update_chain_packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN;
-    memcpy(update_chain_packet.data.update_chain.last_hash, giveme_blockchain_back()->hash, sizeof(update_chain_packet.data.update_chain.last_hash));
+    memcpy(update_chain_packet.data.update_chain.last_hash, giveme_blockchain_block_hash(giveme_blockchain_back()), sizeof(update_chain_packet.data.update_chain.last_hash));
     giveme_unlock_chain();
     giveme_network_broadcast(&update_chain_packet);
 }
@@ -1458,7 +1486,7 @@ void giveme_network_update_chain_from_found_peers()
         }
     }
     giveme_blockchain_changes_apply();
-
+    giveme_blockchain_give_ready_signal();
     giveme_unlock_chain();
 }
 int giveme_network_make_block_if_possible()
@@ -1553,7 +1581,7 @@ int giveme_network_process_thread(struct queued_work *work)
             network.blockchain.last_chain_update_request = time(NULL);
             network.blockchain.chain_requesting_update = true;
         }
-        else if (network.blockchain.chain_requesting_update && time(NULL) - network.blockchain.last_chain_update_request > 120)
+        else if (time(NULL) - network.blockchain.last_chain_update_request > 120)
         {
             // Nobody updated the chain and its been 120 seconds?
             // Then we are probably up to date... lets give the blockchain ready signal..

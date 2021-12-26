@@ -46,7 +46,7 @@ double giveme_blockchain_balance_change_for_block(struct key *key, struct block 
         return 0;
     }
 
-    if (memcmp(&block->data.validator_key, key, sizeof(block->data.validator_key)) == 0)
+    if (memcmp(&block->signature.key, key, sizeof(block->signature.key)) == 0)
     {
         // The validator key matches? Let's apply a balance change.
         // they validated this block so got rewarded for it.
@@ -86,10 +86,10 @@ int giveme_blockchain_get_individual(struct key *key, struct blockchain_individu
         {
             struct block_transaction *transaction;
             transaction = &block->data.transactions.transactions[i];
-            if (transaction->type == BLOCK_TRANSACTION_TYPE_NEW_KEY)
+            if (transaction->data.type == BLOCK_TRANSACTION_TYPE_NEW_KEY)
             {
                 struct block_transaction_new_key *published_key;
-                published_key = &transaction->publish_public_key;
+                published_key = &transaction->data.publish_public_key;
 
                 // We found a public key packet does it match our key
                 if (key_cmp(&published_key->pub_key, key))
@@ -100,7 +100,7 @@ int giveme_blockchain_get_individual(struct key *key, struct blockchain_individu
                     individual_out->flags |= GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN;
                 }
             }
-            else if (key_cmp(&block->data.validator_key, key))
+            else if (key_cmp(&block->signature.key, key))
             {
                 // This key verified this block lets increment
                 individual_out->key_data.verified_blocks.total++;
@@ -114,14 +114,18 @@ int giveme_blockchain_get_individual(struct key *key, struct blockchain_individu
     return (individual_out->flags & GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN) ? 0 : -1;
 }
 
-struct block* giveme_blockchain_get_block_with_index(int index)
+struct block *giveme_blockchain_get_block_with_index(int index)
 {
     if (blockchain.total <= index)
         return NULL;
-    
+
     return &blockchain.block[index];
 }
 
+const char *giveme_blockchain_block_hash(struct block *block)
+{
+    return block->signature.data_hash;
+}
 off_t giveme_blockchain_index_for_block_for_chain(struct blockchain *chain, const char *hash)
 {
     struct block blank_block = {};
@@ -133,7 +137,7 @@ off_t giveme_blockchain_index_for_block_for_chain(struct blockchain *chain, cons
 
     for (int i = chain->total - 1; i >= 0; i--)
     {
-        if (S_EQ(chain->block[i].hash, hash))
+        if (S_EQ(giveme_blockchain_block_hash(&chain->block[i]), hash))
         {
             return i;
         }
@@ -200,7 +204,7 @@ struct block *giveme_blockchain_crawl_next_for_chain(struct blockchain *chain, i
     }
 
     struct block *block = &chain->block[blockchain.crawl.pos];
-    if (chain->crawl.end && S_EQ(block->hash, chain->crawl.end))
+    if (chain->crawl.end && S_EQ(giveme_blockchain_block_hash(block), chain->crawl.end))
     {
         // We have finished crawling
         chain->crawl.crawling = false;
@@ -224,7 +228,7 @@ struct block *giveme_blockchain_crawl_next(int flags)
     return giveme_blockchain_crawl_next_for_chain(&blockchain, flags);
 }
 
-bool giveme_block_has_hash(struct block *block, const char *hash)
+bool giveme_block_confirm_hash(struct block *block, const char *hash)
 {
     char hash_comptued[SHA256_STRING_LENGTH];
     sha256_data(&block->data, hash_comptued, sizeof(block->data));
@@ -234,9 +238,10 @@ bool giveme_block_has_hash(struct block *block, const char *hash)
 bool giveme_mined(struct block *block)
 {
     bool hash_correct = true;
+    const char *hash = giveme_blockchain_block_hash(block);
     for (int i = 0; i < GIVEME_TOTAL_ZEROS_FOR_MINED_BLOCK; i++)
     {
-        if (block->hash[i] != '0')
+        if (hash[i] != '0')
         {
             hash_correct = false;
             break;
@@ -245,7 +250,7 @@ bool giveme_mined(struct block *block)
 
     if (hash_correct)
     {
-        hash_correct = giveme_block_has_hash(block, block->hash);
+        hash_correct = giveme_block_confirm_hash(block, giveme_blockchain_block_hash(block));
     }
 
     return hash_correct;
@@ -289,7 +294,7 @@ bool giveme_blockchain_verify_for_chain(struct blockchain *chain)
                 return false;
             }
         }
-        if (!S_EQ(block->data.prev_hash, prev_block->hash))
+        if (!S_EQ(block->data.prev_hash, giveme_blockchain_block_hash(prev_block)))
         {
             return false;
         }
@@ -396,11 +401,11 @@ void giveme_blockchain_handle_added_block(struct block *block)
     for (int i = 0; i < block->data.transactions.total; i++)
     {
         transaction = &block->data.transactions.transactions[i];
-        if (transaction->type == BLOCK_TRANSACTION_TYPE_NEW_KEY)
+        if (transaction->data.type == BLOCK_TRANSACTION_TYPE_NEW_KEY)
         {
-            vector_push(blockchain.public_keys, &transaction->publish_public_key);
+            vector_push(blockchain.public_keys, &transaction->data.publish_public_key);
             struct block_transaction_new_key *published_key;
-            published_key = &transaction->publish_public_key;
+            published_key = &transaction->data.publish_public_key;
 
             // We found a public key packet does it match our key
             if (key_cmp(&published_key->pub_key, key))
@@ -411,7 +416,7 @@ void giveme_blockchain_handle_added_block(struct block *block)
                 blockchain.me.flags |= GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN;
             }
         }
-        else if (key_cmp(&block->data.validator_key, key))
+        else if (key_cmp(&block->signature.key, key))
         {
             // This key verified this block lets increment
             blockchain.me.key_data.verified_blocks.total++;
@@ -419,7 +424,6 @@ void giveme_blockchain_handle_added_block(struct block *block)
     }
 
     blockchain.me.key_data.balance += giveme_blockchain_balance_change_for_block(key, block);
-    
 }
 
 void giveme_blockchain_load_data()
@@ -457,14 +461,14 @@ void giveme_blockchain_create_genesis_block()
     genesis_block.data.transactions.total = 1;
 
     struct block_transaction *transaction = &genesis_block.data.transactions.transactions[0];
-    transaction->type = BLOCK_TRANSACTION_TYPE_NEW_KEY;
-    struct block_transaction_new_key *key = &transaction->publish_public_key;
+    transaction->data.type = BLOCK_TRANSACTION_TYPE_NEW_KEY;
+    struct block_transaction_new_key *key = &transaction->data.publish_public_key;
     strncpy(key->name, "Genesis Individual", sizeof(key->name));
     key->pub_key.size = strlen(GIVEME_BLOCKCHAIN_GENESIS_KEY);
     strncpy(key->pub_key.key, GIVEME_BLOCKCHAIN_GENESIS_KEY, sizeof(key->pub_key.key));
     genesis_block.data.nounce = atoi(GIVEME_BLOCKCHAIN_GENESIS_NOUNCE);
-    strncpy(genesis_block.hash, GIVEME_BLOCKCHAIN_GENESIS_HASH, sizeof(genesis_block.hash));
-    int res = giveme_blockchain_add_block(&genesis_block);
+   // strncpy(genesis_block.hash, GIVEME_BLOCKCHAIN_GENESIS_HASH, sizeof(genesis_block.hash));
+    int res = giveme_mine(&genesis_block);
     if (res < 0)
     {
         giveme_log("%s failed to add genesis block to chain\n", __FUNCTION__);
@@ -503,7 +507,7 @@ void giveme_blockchain_changes_discard()
     if (blockchain.changes.blocks_added > 0)
     {
         memset(&blockchain.block[blockchain.changes.index + 1], 0, sizeof(struct block) * blockchain.changes.blocks_added);
-        blockchain.total = blockchain.changes.index+1;
+        blockchain.total = blockchain.changes.index + 1;
     }
 
     blockchain.changes.is_changing = false;
@@ -565,26 +569,65 @@ void giveme_blockchain_initialize()
     giveme_blockchain_load_data();
 }
 
+int giveme_block_verify_transaction(struct block *block, struct block_transaction* transaction)
+{
+    if (transaction->data.type == BLOCK_TRANSACTION_TYPE_NEW_PACKAGE)
+    {
+        char tmp_hash[SHA256_STRING_LENGTH];
+        sha256_data(&transaction->data, tmp_hash, sizeof(transaction->data));
+        if (!public_verify_key_sig_hash(&transaction->data.publish_package.signature, tmp_hash) < 0)
+        {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+int giveme_block_verify_transactions(struct block *block)
+{
+    if (block->data.transactions.total > GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK)
+    {
+        return -1;
+    }
+
+    for (int i = 0; i < block->data.transactions.total; i++)
+    {
+        if (giveme_block_verify_transaction(block, &block->data.transactions.transactions[i]) < 0)
+        {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
 int giveme_block_verify_for_chain(struct blockchain *chain, struct block *block)
 {
     struct block *last_block = giveme_blockchain_back_for_chain(chain);
-    if (last_block && S_EQ(last_block->hash, block->hash))
+    if (last_block && S_EQ(giveme_blockchain_block_hash(last_block), giveme_blockchain_block_hash(block)))
     {
         // We already have this on the tail of the blockchain
         // most likely multiple nodes resent this block and it reached us twice.
         return GIVEME_BLOCKCHAIN_ALREADY_ON_TAIL;
     }
 
-    if (!giveme_mined(block))
-    {
-        return GIVEME_BLOCKCHAIN_NOT_MINED;
-    }
-
-    if (last_block && !S_EQ(last_block->hash, block->data.prev_hash))
+    if (last_block && !S_EQ(giveme_blockchain_block_hash(last_block), block->data.prev_hash))
     {
         return GIVEME_BLOCKCHAIN_BAD_PREVIOUS_HASH;
     }
 
+    char tmp_hash[SHA256_STRING_LENGTH];
+    sha256_data(&block->data, tmp_hash, sizeof(block->data));
+    if (public_verify_key_sig_hash(&block->signature, tmp_hash) < 0)
+    {
+        return GIVEME_BLOCKCHAIN_BAD_BLOCK_SIGNATURE;
+    }
+
+    if (giveme_block_verify_transactions(block) < 0)
+    {
+        giveme_log("%s bad illegal transactions were provided therefore block verification has failed\n", __FUNCTION__);
+        return GIVEME_BLOCKCHAIN_BAD_BLOCK_TRANSACTIONS;
+    }
     return GIVEME_BLOCKCHAIN_BLOCK_VALID;
 }
 
@@ -602,7 +645,7 @@ int giveme_blockchain_add_block_for_chain(struct blockchain *chain, struct block
     int index = blockchain.total;
     chain->block[index] = *block;
     chain->total++;
-    
+
     giveme_blockchain_handle_added_block(block);
 
     if (chain->changes.is_changing)
@@ -621,32 +664,34 @@ int giveme_blockchain_add_block(struct block *block)
     int res = giveme_blockchain_add_block_for_chain(&blockchain, block);
     if (res < 0)
         return res;
-    giveme_log("%s Block added %s prev=%s, total blocks %i\n", __FUNCTION__, block->hash, block->data.prev_hash, blockchain.total);
+    giveme_log("%s Block added %s prev=%s, total blocks %i\n", __FUNCTION__, giveme_blockchain_block_hash(block), block->data.prev_hash, blockchain.total);
     return res;
 }
 
 int giveme_mine(struct block *block)
 {
-
+    int res = 0;
     // Let's set the previous hash
     struct block *previous_block = giveme_blockchain_back();
     if (previous_block)
     {
-        strncpy(block->data.prev_hash, previous_block->hash, sizeof(block->data.prev_hash));
+        strncpy(block->data.prev_hash, giveme_blockchain_block_hash(previous_block), sizeof(block->data.prev_hash));
     }
 
-    do
+    block->data.nounce = rand() % 0xffffff;
+    res = private_sign_key_sig_hash(&block->signature, &block->data, sizeof(&block->data));
+    if (res < 0)
     {
-        block->data.nounce = rand() % 0xffffff;
-        sha256_data(&block->data, block->hash, sizeof(block->data));
-    } while (!giveme_mined(block));
-
-    giveme_log("Mined a block %s previous block %s\n", block->hash, previous_block ? previous_block->hash : "NULL");
+        giveme_log("%s failed to sign block with my private key\n", __FUNCTION__);
+        goto out;
+    }
+    giveme_log("Mined a block %s previous block %s\n", giveme_blockchain_block_hash(block), previous_block ? giveme_blockchain_block_hash(previous_block) : "NULL");
     // We mined a block? Then add it to the blockchain and tell everyone else about it
-    int res = giveme_blockchain_add_block(block);
+    res = giveme_blockchain_add_block(block);
     if (res < 0)
     {
         giveme_log("Failed to add the block to the blockchain failed with %i\n", res);
+        goto out;
     }
 
 out:

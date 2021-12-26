@@ -14,6 +14,8 @@
 #define GIVEME_BLOCKCHAIN_BAD_PREVIOUS_HASH -2
 #define GIVEME_BLOCKCHAIN_ALREADY_ON_TAIL -3
 #define GIVEME_BLOCKCHAIN_BLOCK_NOT_FOUND -4
+#define GIVEME_BLOCKCHAIN_BAD_BLOCK_SIGNATURE -5
+#define GIVEME_BLOCKCHAIN_BAD_BLOCK_TRANSACTIONS -6
 
 enum
 {
@@ -33,7 +35,6 @@ struct blockchain_keydata
 
     // The time the public key was published on the network.
     time_t created;
-
 };
 
 enum
@@ -100,47 +101,101 @@ struct blockchain
 enum
 {
     BLOCK_TRANSACTION_TYPE_NEW_PACKAGE,
+    BLOCK_TRANSACTION_TYPE_DOWNLOADED_PACKAGE,
     BLOCK_TRANSACTION_TYPE_NEW_KEY,
 };
 
+struct block_transaction_downloaded_package_data
+{
+    // The hash of the transaction that created the package we are downloading
+    char hash[SHA256_STRING_LENGTH];
+    // The IP address of the person who downloaded the package so people downloading this package can find us.
+    char ip_address[GIVEME_IP_STRING_SIZE];
+
+    // The key of the person you downloaded the package from.
+    struct key provider_key;
+};
+
+struct block_transaction_new_package_data
+{
+    char name[GIVEME_PACKAGE_NAME_MAX];
+};
 struct block_transaction
 {
-    int type;
-    union
+    struct block_transaction_data
     {
-        struct block_transaction_new_package
+        int type;
+        union
         {
-            char name[GIVEME_PACKAGE_NAME_MAX];
+            struct block_transaction_new_package
+            {
+                // Data signed with the signature below
+                struct block_transaction_new_package_data data;
 
-        } publish_package;
+                struct key_signature_hash signature;
 
-        struct block_transaction_new_key
-        {
-            struct key pub_key;
-            char name[GIVEME_KEY_NAME_MAX];
-        } publish_public_key;
-    };
+                // The originating IP address for this package. This is the IP address where you will
+                // find the package... When downloading a package if the peer is offline/unreachable
+                // we will download from someone whos already downloaded the package.
+                // We are not able to sign this since the peer does not know his own IP address.
+                char ip_address[GIVEME_IP_STRING_SIZE];
+
+            } publish_package;
+
+            struct block_transaction_downloaded_package
+            {
+                // Data signed with the signature below.
+                struct block_transaction_downloaded_package_data data;
+                struct key_signature_hash signature;
+
+            } downloaded_package;
+
+            struct block_transaction_new_key
+            {
+                struct key pub_key;
+                char name[GIVEME_KEY_NAME_MAX];
+            } publish_public_key;
+        };
+
+        // The UNIX timestamp of when the transaction was created
+        time_t timestamp;
+    } data;
+
+    // This is the hash of transaction, its not signed by any public key
+    // The hash should be used to reference the transaction only and not for security
+    // purposes. The hash will be used as an ID in some situations such as when requesting pacakges.
+    // Packages will not be requested by their friendly name but the hash of the transaction
+    // that made them.
+    char hash[SHA256_STRING_LENGTH];
 };
 
 struct block
 {
-    struct
+    union
     {
-        struct block_transactions
+        struct
         {
-            struct block_transaction transactions[GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK];
-            int total;
-        } transactions;
+            struct block_transactions
+            {
+                struct block_transaction transactions[GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK];
+                int total;
+            } transactions;
 
-        // The public key who mined/validated this block
-        // he shall receive a coin reward of 0.05 * total_transactions
-        // unless its christmas day in which case the reward will be 0.10 * total_transactions
-        struct key validator_key;
+            char prev_hash[SHA256_STRING_LENGTH];
+            int nounce;
 
-        char prev_hash[SHA256_STRING_LENGTH];
-        int nounce;
-    } data;
-    char hash[SHA256_STRING_LENGTH];
+            // The timestamp of when the block was created.
+            time_t timestamp;
+        } data;
+
+        // 2046 bytes of wasted memory, so that theirs room to make changes
+        // without destroying the entire blockchain.
+        char wasteful[2046];
+    };
+
+    // The signature signed by the key who mined/validated this block
+    // he shall receive a coin reward of 0.05 * total_transactions
+    struct key_signature_hash signature;
 };
 
 /**
@@ -151,7 +206,7 @@ struct block
 struct block *giveme_blockchain_back_safe();
 struct block *giveme_blockchain_back() NO_THREAD_SAFETY;
 
-struct blockchain_individual* giveme_blockchain_me();
+struct blockchain_individual *giveme_blockchain_me();
 
 void giveme_lock_chain();
 void giveme_unlock_chain();
@@ -246,7 +301,6 @@ void giveme_blockchain_wait_until_ready();
  */
 void giveme_blockchain_give_ready_signal();
 
-
 /**
  * @brief Returns the current index in the blockchain. I.e if you have 10 blocks index will be 9
  * 
@@ -254,11 +308,18 @@ void giveme_blockchain_give_ready_signal();
  */
 size_t giveme_blockchain_index();
 
-
 void giveme_blockchain_changes_prepare();
 void giveme_blockchain_changes_discard();
 void giveme_blockchain_changes_apply();
 
-struct block* giveme_blockchain_get_block_with_index(int index);
+struct block *giveme_blockchain_get_block_with_index(int index);
+
+/**
+ * @brief Returns the SHA256 hash of the given block
+ * 
+ * @param block 
+ * @return const char* 
+ */
+const char* giveme_blockchain_block_hash(struct block* block);
 
 #endif

@@ -110,10 +110,9 @@ struct giveme_dataexchange_tcp_packet
 
         struct giveme_dataexchange_sending_block
         {
-            // The block index of the block, following will be one block 
+            // The block index of the block, following will be one block
             int block_index;
         } sending_block;
-
     };
 };
 enum
@@ -145,7 +144,9 @@ struct giveme_tcp_packet
 
             struct giveme_tcp_packet_publish_package
             {
-                char name[GIVEME_PACKAGE_NAME_MAX];
+                struct block_transaction_new_package_data data;
+                // The public key and signature to verify this public key signed the given data.
+                struct key_signature_hash signature;
             } publish_package;
 
             struct giveme_tcp_packet_publish_key
@@ -240,7 +241,7 @@ struct network
         // with blocks we need, during a chain request we will randomly download each block
         // between them one block at a time.
         // Rather than download from one peer who could lie to us.
-        struct vector* peers_with_blocks;
+        struct vector *peers_with_blocks;
 
         // The timestamp for when we last sent a block during our current session
         // Equal to zero on startup.

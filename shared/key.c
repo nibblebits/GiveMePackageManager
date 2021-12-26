@@ -17,6 +17,7 @@
 #include "misc.h"
 #include "config.h"
 #include "sha256.h"
+#include "string.h"
 
 struct key public_key = {};
 struct key private_key = {};
@@ -116,6 +117,38 @@ out:
     }
 
 
+    return res;
+}
+
+int public_verify_key_sig_hash(struct key_signature_hash* key_sig_hash, const char* hash_to_compare)
+{
+    int res = public_verify(&key_sig_hash->key, key_sig_hash->data_hash, sizeof(key_sig_hash->data_hash), &key_sig_hash->signature);
+    if (res < 0)
+    {
+        return res;
+    }
+
+    // Now we have confirmed that the hash was signed correctly, we need to now ensure that
+    // the hash the key signed is the same as the one we computed.
+    return memcmp(hash_to_compare, &key_sig_hash->data_hash, SHA256_STRING_LENGTH) == 0;
+}
+
+struct key* key_from_key_sig_hash(struct key_signature_hash* key_sig_hash)
+{
+    return &key_sig_hash->key;
+}
+
+int private_sign_key_sig_hash(struct key_signature_hash* key_sig_hash, void* data, size_t size)
+{
+    bzero(key_sig_hash, sizeof(struct key_signature_hash));
+    sha256_data(data, key_sig_hash->data_hash, size);
+    int res = private_sign(key_sig_hash->data_hash, SHA256_STRING_LENGTH, &key_sig_hash->signature);
+    if (res < 0)
+    {
+        return res;
+    }
+
+    key_sig_hash->key = *giveme_public_key();
     return res;
 }
 

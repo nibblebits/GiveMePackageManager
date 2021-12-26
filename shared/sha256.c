@@ -30,6 +30,7 @@ void sha256_data(void* input, char* outputBuffer, size_t size)
     }
     outputBuffer[64] = 0;
 }
+
 void sha256_string(char *string, char* outputBuffer)
 {
     sha256_data(string, outputBuffer, strlen(string));
