@@ -35,7 +35,7 @@ struct key_signature_hash
 int private_sign(const char *data, size_t size, struct signature *sig_out);
 int public_verify(struct key *public_key, const char *data, size_t size, struct signature *sig_in);
 int public_verify_key_sig_hash(struct key_signature_hash* key_sig_hash, const char* hash_to_compare);
-int private_sign_key_sig_hash(struct key_signature_hash* key_sig_hash, void* data, size_t size);
+int private_sign_key_sig_hash(struct key_signature_hash* key_sig_hash, void* hash);
 struct key* key_from_key_sig_hash(struct key_signature_hash* key_sig_hash);
 
 void giveme_load_keypair();

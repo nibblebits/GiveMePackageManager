@@ -679,7 +679,9 @@ int giveme_mine(struct block *block)
     }
 
     block->data.nounce = rand() % 0xffffff;
-    res = private_sign_key_sig_hash(&block->signature, &block->data, sizeof(&block->data));
+    char tmp_hash[SHA256_STRING_LENGTH];
+    sha256_data(&block->data, tmp_hash, sizeof(tmp_hash));
+    res = private_sign_key_sig_hash(&block->signature, tmp_hash);
     if (res < 0)
     {
         giveme_log("%s failed to sign block with my private key\n", __FUNCTION__);

@@ -70,6 +70,7 @@ int giveme_network_create_transaction_for_packet(struct giveme_tcp_packet *packe
 
     struct network_transaction *transaction = giveme_network_new_transaction();
     memcpy(&transaction->packet, packet, sizeof(struct giveme_tcp_packet));
+
     transaction->created = time(NULL);
 
     *slot = transaction;
@@ -953,6 +954,12 @@ void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *pack
     {
         giveme_log("%s the package to be published was incorrectly signed\n", __FUNCTION__);
         return;
+    }
+    
+    if (strnlen(packet->data.publish_package.ip_address, sizeof(packet->data.publish_package.ip_address)) <= 0)
+    {
+        // No IP address was provided therefore we must set it.
+        strncpy(packet->data.publish_package.ip_address, giveme_connection_ip(connection), sizeof(packet->data.publish_package.ip_address));
     }
 
     giveme_log("%s Publish package request for packet %s by %s\n", __FUNCTION__, packet->data.publish_package.data.name, giveme_connection_ip(connection));

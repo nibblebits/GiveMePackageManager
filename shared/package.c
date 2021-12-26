@@ -9,6 +9,7 @@
 #include "misc.h"
 #include "sha256.h"
 #include "network.h"
+#include "log.h"
 static bool is_dir(const char *dir)
 {
     struct stat st;
@@ -110,7 +111,18 @@ int giveme_package_create(const char *path, const char *package_name)
     struct giveme_tcp_packet packet = {};
     packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE;
     strncpy(packet.data.publish_package.data.name, package_name, sizeof(packet.data.publish_package.data.name));
-    
+    sha256_file(dst_path_hashed, packet.data.publish_package.data.filehash);
+
+    char tmp_hash[SHA256_STRING_LENGTH];
+    sha256_data(&packet.data.publish_package.data, tmp_hash, sizeof(tmp_hash));    
+    // We must sign the data
+    res = private_sign_key_sig_hash(&packet.data.publish_package.signature, tmp_hash);
+    if (res < 0)
+    {
+        giveme_log("%s failed to sign the packet publish data with private key\n", __FUNCTION__);
+        
+        return res;
+    }
     // We should sign the data.
     giveme_network_broadcast(&packet);
     

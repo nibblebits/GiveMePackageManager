@@ -119,7 +119,11 @@ struct block_transaction_downloaded_package_data
 struct block_transaction_new_package_data
 {
     char name[GIVEME_PACKAGE_NAME_MAX];
+    // The hash of the data of this package. Will be used to prove we downloaded the correct file
+    // and a malicious party did not send us something fake.
+    char filehash[SHA256_STRING_LENGTH];
 };
+
 struct block_transaction
 {
     struct block_transaction_data

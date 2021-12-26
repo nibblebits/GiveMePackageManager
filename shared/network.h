@@ -145,6 +145,10 @@ struct giveme_tcp_packet
             struct giveme_tcp_packet_publish_package
             {
                 struct block_transaction_new_package_data data;
+                // The IP address where the package can be downloaded from..
+                // If this is NULL then the receiver of this packet must fill it with the
+                // IP address of the peer who sent us this packet.
+                char ip_address[GIVEME_IP_STRING_SIZE];
                 // The public key and signature to verify this public key signed the given data.
                 struct key_signature_hash signature;
             } publish_package;

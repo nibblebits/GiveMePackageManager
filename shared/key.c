@@ -138,10 +138,10 @@ struct key* key_from_key_sig_hash(struct key_signature_hash* key_sig_hash)
     return &key_sig_hash->key;
 }
 
-int private_sign_key_sig_hash(struct key_signature_hash* key_sig_hash, void* data, size_t size)
+int private_sign_key_sig_hash(struct key_signature_hash* key_sig_hash, void* hash)
 {
     bzero(key_sig_hash, sizeof(struct key_signature_hash));
-    sha256_data(data, key_sig_hash->data_hash, size);
+    sha256_data(hash, key_sig_hash->data_hash, SHA256_STRING_LENGTH);
     int res = private_sign(key_sig_hash->data_hash, SHA256_STRING_LENGTH, &key_sig_hash->signature);
     if (res < 0)
     {
