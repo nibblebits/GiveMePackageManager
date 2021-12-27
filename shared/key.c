@@ -141,7 +141,7 @@ struct key* key_from_key_sig_hash(struct key_signature_hash* key_sig_hash)
 int private_sign_key_sig_hash(struct key_signature_hash* key_sig_hash, void* hash)
 {
     bzero(key_sig_hash, sizeof(struct key_signature_hash));
-    sha256_data(hash, key_sig_hash->data_hash, SHA256_STRING_LENGTH);
+    strncpy(key_sig_hash->data_hash, hash, sizeof(key_sig_hash->data_hash));
     int res = private_sign(key_sig_hash->data_hash, SHA256_STRING_LENGTH, &key_sig_hash->signature);
     if (res < 0)
     {
