@@ -496,7 +496,7 @@ bool giveme_blockchain_can_add_blocks(size_t amount)
     return true;
 }
 
-void giveme_blockchain_create_genesis_block()
+void giveme_blockchain_create_genesis_block(bool mine_genesis)
 {
     giveme_log("%s creating genesis block for first time blockchain use\n", __FUNCTION__);
     struct block genesis_block;
@@ -509,9 +509,22 @@ void giveme_blockchain_create_genesis_block()
     strncpy(key->name, "Genesis Individual", sizeof(key->name));
     key->pub_key.size = GIVEME_BLOCKCHAIN_GENESIS_PUBLIC_KEY_SIZE;
     strncpy(key->pub_key.key, GIVEME_BLOCKCHAIN_GENESIS_PUBLIC_KEY, sizeof(key->pub_key.key));
+    if (mine_genesis)
+    {
+        key->pub_key = *giveme_public_key();
+    }
     sha256_data(&transaction->data, transaction->hash, sizeof(transaction->data));
     genesis_block.data.nounce = atoi(GIVEME_BLOCKCHAIN_GENESIS_NOUNCE);
-    int res = giveme_blockchain_add_block(&genesis_block);
+    int res = 0;
+    if (mine_genesis)
+    {
+        res = giveme_mine(&genesis_block);
+        giveme_log("%s genesis block mined: hash=%s, nounce=%i, pub_key=%s pub_key_size=%i\n", __FUNCTION__, genesis_block.signature.data_hash, genesis_block.data.nounce, key->pub_key.key, key->pub_key.size);
+    }
+    else
+    {
+        res = giveme_blockchain_add_block(&genesis_block);
+    }
     if (res < 0)
     {
         giveme_log("%s failed to add genesis block to chain\n", __FUNCTION__);
@@ -567,7 +580,7 @@ size_t giveme_blockchain_index()
     return blockchain.total - 1;
 }
 
-void giveme_blockchain_initialize()
+void giveme_blockchain_initialize(bool mine_genesis)
 {
     // Must have a 1 at the end of the value due to the validator algorithm
     assert(GIVEME_SECONDS_TO_MAKE_BLOCK & 0x01);
@@ -600,7 +613,7 @@ void giveme_blockchain_initialize()
     {
         // We had no blockchain when this function was called, therefore
         // lets create the genesis block
-        giveme_blockchain_create_genesis_block();
+        giveme_blockchain_create_genesis_block(mine_genesis);
     }
 
     if (sem_init(&blockchain.blockchain_ready_sem, 0, 0) != 0)

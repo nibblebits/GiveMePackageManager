@@ -17,7 +17,7 @@
 #include "log.h"
 #include "key.h"
 
-void initialize()
+void initialize(bool mine_genesis)
 {
 	// We should setup the seeder for when we use random.
 	struct timespec ts;
@@ -44,15 +44,15 @@ void initialize()
 	
 
 	giveme_thread_pool_init(GIVEME_TOTAL_THREADS);
-	giveme_blockchain_initialize();
+	giveme_blockchain_initialize(mine_genesis);
 	giveme_network_initialize();
 }
 
 int main(int argc, char *argv[])
 {
-	initialize();
+	bool mine_genesis = (argc > 1 && S_EQ(argv[1], "genesis"));
+	initialize(mine_genesis);
 	giveme_thread_pool_start();
-
 	giveme_network_listen();
 	giveme_network_connection_thread_start();
 	giveme_network_process_thread_start();

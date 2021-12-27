@@ -223,7 +223,7 @@ struct block *giveme_blockchain_block(const char *hash, size_t *blocks_left_to_e
 size_t giveme_blockchain_block_count_for_chain(struct blockchain *chain) NO_THREAD_SAFETY;
 size_t giveme_blockchain_block_count() NO_THREAD_SAFETY;
 
-void giveme_blockchain_initialize() NO_THREAD_SAFETY;
+void giveme_blockchain_initialize(bool mine_genesis) NO_THREAD_SAFETY;
 void giveme_blockchain_load() NO_THREAD_SAFETY;
 
 int giveme_blockchain_begin_crawl(const char *start_hash, const char *end_hash) NO_THREAD_SAFETY;
