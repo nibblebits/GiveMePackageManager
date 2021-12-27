@@ -11,12 +11,15 @@
 #define GIVEME_PACKAGE_DIRECTORY GIVEME_DATA_BASE "/packages"
 #define GIVEME_DATA_BASE_DIRECTORY_ENV "HOME"
 #define GIVEME_BLOCKCHAIN_FILEPATH "/blockchain.bin"
+#define GIVEME_PACKAGES_PATH "/dpackages.bin"
+
 #define GIVEME_PUBLIC_KEY_FILEPATH "/key.pub"
 #define GIVEME_PRIVATE_KEY_FILEPATH "/key.pri"
 
 #define GIVEME_TOTAL_THREADS 7
 #define GIVEME_MAX_BLOCKCHAIN_REQUESTS_IF_FAILED 1
-#define GIVEME_PACKAGE_NAME_MAX 256
+#define GIVEME_PACKAGE_NAME_MAX 128
+#define GIVEME_PACKAGE_DESCRIPTION_MAX 512
 #define GIVEME_KEY_NAME_MAX 128
 #define GIVEME_TOTAL_ZEROS_FOR_MINED_BLOCK 1
 #define GIVEME_IP_STRING_SIZE 17
@@ -66,5 +69,10 @@
 // Blockchain will resize its self after 1024 blocks, and it will resize to +1024 blocks each time
 #define BLOCKCHAIN_RESIZE_TOTAL_BLOCKS 1024
 
+// The total packages that can exist before a resize is needed
+#define PACKAGES_TOTAL_ENTITIES 2056
+
+// The maximum known ip addresses in a package cache..
+#define PACKAGE_MAX_KNOWN_IP_ADDRESSES 64
 
 #endif

@@ -13,6 +13,7 @@
 #include "network.h"
 #include "tpool.h"
 #include "blockchain.h"
+#include "package.h"
 #include "log.h"
 #include "key.h"
 
@@ -38,7 +39,9 @@ void initialize()
 
 	sigaction(SIGPIPE, &(struct sigaction){SIG_IGN}, NULL);
 	giveme_log_initialize();
+	giveme_package_initialize();
 	giveme_load_keypair();
+	
 
 	giveme_thread_pool_init(GIVEME_TOTAL_THREADS);
 	giveme_blockchain_initialize();

@@ -255,11 +255,10 @@ size_t giveme_blockchain_total_blocks_left(int index);
 int giveme_blockchain_get_individual(struct key *key, struct blockchain_individual *individual_out);
 
 /**
- * @brief Loads important data from the blockchain such as the public keys, our balance ect..
- * Blockchain network will not connect until this is done.
+ * @brief Deletes all cache files and reloads them by reading the whole blockchain again
  * 
  */
-void giveme_blockchain_load_data();
+int giveme_blockchain_cache_reload();
 
 /**
  * @brief Returns true if we (our public key) is known on the blockchain

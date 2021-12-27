@@ -14,6 +14,7 @@
 #include <assert.h>
 #include "vector.h"
 #include "network.h"
+#include "package.h"
 #include "misc.h"
 #include "sha256.h"
 #include "log.h"
@@ -391,6 +392,43 @@ bool giveme_blockchain_are_we_known()
     return blockchain.me.flags & GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN;
 }
 
+void giveme_blockchain_handle_added_block_transaction_new_key(struct block *block, struct block_transaction *transaction)
+{
+    struct key *key = giveme_public_key();
+
+    vector_push(blockchain.public_keys, &transaction->data.publish_public_key);
+    struct block_transaction_new_key *published_key;
+    published_key = &transaction->data.publish_public_key;
+
+    // We found a public key transaction does it match our key
+    if (key_cmp(&published_key->pub_key, key))
+    {
+        // Yep it matches this was when this key was first ever published
+        memcpy(&blockchain.me.key_data.key, &published_key->pub_key, sizeof(struct key));
+        strncpy(blockchain.me.key_data.name, published_key->name, sizeof(blockchain.me.key_data.name));
+        blockchain.me.flags |= GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN;
+    }
+}
+
+void giveme_blockchain_handle_added_block_transaction_new_package(struct block *block, struct block_transaction *transaction)
+{
+    int res = 0;
+    struct key *key = giveme_public_key();
+    struct block_transaction_new_package* publish_package_transaction = &transaction->data.publish_package;
+    struct block_transaction_new_package_data* package_data = &publish_package_transaction->data;
+
+    const char* filepath = NULL;
+    if (giveme_package_downloaded(package_data->filehash))
+    {
+        filepath = giveme_package_path(package_data->filehash);
+    }
+    res = giveme_packages_push(block, package_data->name, transaction->hash, package_data->filehash, filepath, publish_package_transaction->ip_address);
+    if (res < 0)
+    {
+        giveme_log("%s problem pushing package to cache\n", __FUNCTION__);
+    }
+}
+
 void giveme_blockchain_handle_added_block(struct block *block)
 {
     giveme_log("%s handling block with %i transactions.\n", __FUNCTION__, block->data.transactions.total);
@@ -401,22 +439,17 @@ void giveme_blockchain_handle_added_block(struct block *block)
     for (int i = 0; i < block->data.transactions.total; i++)
     {
         transaction = &block->data.transactions.transactions[i];
-        if (transaction->data.type == BLOCK_TRANSACTION_TYPE_NEW_KEY)
+        switch (transaction->data.type)
         {
-            vector_push(blockchain.public_keys, &transaction->data.publish_public_key);
-            struct block_transaction_new_key *published_key;
-            published_key = &transaction->data.publish_public_key;
+        case BLOCK_TRANSACTION_TYPE_NEW_KEY:
+            giveme_blockchain_handle_added_block_transaction_new_key(block, transaction);
+            break;
 
-            // We found a public key packet does it match our key
-            if (key_cmp(&published_key->pub_key, key))
-            {
-                // Yep it matches this was when this key was first ever published
-                memcpy(&blockchain.me.key_data.key, &published_key->pub_key, sizeof(struct key));
-                strncpy(blockchain.me.key_data.name, published_key->name, sizeof(blockchain.me.key_data.name));
-                blockchain.me.flags |= GIVEME_BLOCKCHAIN_INDIVIDUAL_FLAG_HAS_KEY_ON_CHAIN;
-            }
+        case BLOCK_TRANSACTION_TYPE_NEW_PACKAGE:
+            giveme_blockchain_handle_added_block_transaction_new_package(block, transaction);
+            break;
         }
-        else if (key_cmp(&block->signature.key, key))
+        if (key_cmp(&block->signature.key, key))
         {
             // This key verified this block lets increment
             blockchain.me.key_data.verified_blocks.total++;
@@ -426,8 +459,15 @@ void giveme_blockchain_handle_added_block(struct block *block)
     blockchain.me.key_data.balance += giveme_blockchain_balance_change_for_block(key, block);
 }
 
-void giveme_blockchain_load_data()
+int giveme_blockchain_cache_reload()
 {
+    int res = 0;
+    res = giveme_packages_cache_clear();
+    if (res < 0)
+    {
+        goto out;
+    }
+
     giveme_blockchain_begin_crawl(NULL, NULL);
     struct block *block = giveme_blockchain_crawl_next(0);
     struct block *prev_block = NULL;
@@ -436,6 +476,8 @@ void giveme_blockchain_load_data()
         giveme_blockchain_handle_added_block(block);
         block = giveme_blockchain_crawl_next(0);
     }
+out:
+    return res;
 }
 
 size_t giveme_blockchain_max_allowed_blocks_for_now()
@@ -467,7 +509,7 @@ void giveme_blockchain_create_genesis_block()
     key->pub_key.size = strlen(GIVEME_BLOCKCHAIN_GENESIS_KEY);
     strncpy(key->pub_key.key, GIVEME_BLOCKCHAIN_GENESIS_KEY, sizeof(key->pub_key.key));
     genesis_block.data.nounce = atoi(GIVEME_BLOCKCHAIN_GENESIS_NOUNCE);
-   // strncpy(genesis_block.hash, GIVEME_BLOCKCHAIN_GENESIS_HASH, sizeof(genesis_block.hash));
+    // strncpy(genesis_block.hash, GIVEME_BLOCKCHAIN_GENESIS_HASH, sizeof(genesis_block.hash));
     int res = giveme_mine(&genesis_block);
     if (res < 0)
     {
@@ -565,11 +607,9 @@ void giveme_blockchain_initialize()
         // Error: initialization failed
         giveme_log("%s failed to initialize blockchain_ready_sem\n");
     }
-
-    giveme_blockchain_load_data();
 }
 
-int giveme_block_verify_transaction(struct block *block, struct block_transaction* transaction)
+int giveme_block_verify_transaction(struct block *block, struct block_transaction *transaction)
 {
     if (transaction->data.type == BLOCK_TRANSACTION_TYPE_NEW_PACKAGE)
     {
