@@ -617,7 +617,7 @@ int giveme_block_verify_transaction(struct block *block, struct block_transactio
     {
         char tmp_hash[SHA256_STRING_LENGTH];
         sha256_data(&transaction->data, tmp_hash, sizeof(transaction->data));
-        if (!public_verify_key_sig_hash(&transaction->data.publish_package.signature, tmp_hash) < 0)
+        if (public_verify_key_sig_hash(&transaction->data.publish_package.signature, tmp_hash) < 0)
         {
             return -1;
         }

@@ -130,7 +130,7 @@ int public_verify_key_sig_hash(struct key_signature_hash* key_sig_hash, const ch
 
     // Now we have confirmed that the hash was signed correctly, we need to now ensure that
     // the hash the key signed is the same as the one we computed.
-    return memcmp(hash_to_compare, &key_sig_hash->data_hash, SHA256_STRING_LENGTH) == 0;
+    return memcmp(hash_to_compare, &key_sig_hash->data_hash, SHA256_STRING_LENGTH) == 0 ? 0 : -1;
 }
 
 struct key* key_from_key_sig_hash(struct key_signature_hash* key_sig_hash)
