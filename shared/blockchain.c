@@ -515,6 +515,7 @@ void giveme_blockchain_create_genesis_block(bool mine_genesis)
     }
     sha256_data(&transaction->data, transaction->hash, sizeof(transaction->data));
     genesis_block.data.nounce = atoi(GIVEME_BLOCKCHAIN_GENESIS_NOUNCE);
+    strncpy(genesis_block.signature.data_hash, GIVEME_BLOCKCHAIN_GENESIS_HASH, sizeof(genesis_block.signature.data_hash));
     int res = 0;
     if (mine_genesis)
     {
