@@ -507,11 +507,11 @@ void giveme_blockchain_create_genesis_block()
     transaction->data.type = BLOCK_TRANSACTION_TYPE_NEW_KEY;
     struct block_transaction_new_key *key = &transaction->data.publish_public_key;
     strncpy(key->name, "Genesis Individual", sizeof(key->name));
-    key->pub_key.size = strlen(GIVEME_BLOCKCHAIN_SIGNATURE_GENESIS_KEY);
-    strncpy(key->pub_key.key, GIVEME_BLOCKCHAIN_SIGNATURE_GENESIS_KEY, sizeof(key->pub_key.key));
+    key->pub_key.size = GIVEME_BLOCKCHAIN_GENESIS_PUBLIC_KEY_SIZE;
+    strncpy(key->pub_key.key, GIVEME_BLOCKCHAIN_GENESIS_PUBLIC_KEY, sizeof(key->pub_key.key));
     sha256_data(&transaction->data, transaction->hash, sizeof(transaction->data));
     genesis_block.data.nounce = atoi(GIVEME_BLOCKCHAIN_GENESIS_NOUNCE);
-    int res = giveme_mine(&genesis_block);
+    int res = giveme_blockchain_add_block(&genesis_block);
     if (res < 0)
     {
         giveme_log("%s failed to add genesis block to chain\n", __FUNCTION__);
