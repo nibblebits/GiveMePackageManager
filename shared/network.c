@@ -1330,6 +1330,7 @@ int giveme_network_create_block_transaction_for_network_transaction(struct netwo
     }
 
     transaction_out->data.timestamp = transaction->created;
+    sha256_data(&transaction_out->data, transaction_out->hash, sizeof(transaction_out->data));
     return res;
 }
 

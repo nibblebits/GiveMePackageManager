@@ -508,6 +508,8 @@ void giveme_blockchain_create_genesis_block()
     strncpy(key->name, "Genesis Individual", sizeof(key->name));
     key->pub_key.size = strlen(GIVEME_BLOCKCHAIN_GENESIS_KEY);
     strncpy(key->pub_key.key, GIVEME_BLOCKCHAIN_GENESIS_KEY, sizeof(key->pub_key.key));
+    sha256_data(&transaction->data, transaction->hash, sizeof(transaction->data));
+
     genesis_block.data.nounce = atoi(GIVEME_BLOCKCHAIN_GENESIS_NOUNCE);
     // strncpy(genesis_block.hash, GIVEME_BLOCKCHAIN_GENESIS_HASH, sizeof(genesis_block.hash));
     int res = giveme_mine(&genesis_block);
