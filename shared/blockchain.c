@@ -414,10 +414,10 @@ void giveme_blockchain_handle_added_block_transaction_new_package(struct block *
 {
     int res = 0;
     struct key *key = giveme_public_key();
-    struct block_transaction_new_package* publish_package_transaction = &transaction->data.publish_package;
-    struct block_transaction_new_package_data* package_data = &publish_package_transaction->data;
+    struct block_transaction_new_package *publish_package_transaction = &transaction->data.publish_package;
+    struct block_transaction_new_package_data *package_data = &publish_package_transaction->data;
 
-    const char* filepath = NULL;
+    const char *filepath = NULL;
     if (giveme_package_downloaded(package_data->filehash))
     {
         filepath = giveme_package_path(package_data->filehash);
@@ -507,12 +507,10 @@ void giveme_blockchain_create_genesis_block()
     transaction->data.type = BLOCK_TRANSACTION_TYPE_NEW_KEY;
     struct block_transaction_new_key *key = &transaction->data.publish_public_key;
     strncpy(key->name, "Genesis Individual", sizeof(key->name));
-    key->pub_key.size = strlen(GIVEME_BLOCKCHAIN_GENESIS_KEY);
-    strncpy(key->pub_key.key, GIVEME_BLOCKCHAIN_GENESIS_KEY, sizeof(key->pub_key.key));
+    key->pub_key.size = strlen(GIVEME_BLOCKCHAIN_SIGNATURE_GENESIS_KEY);
+    strncpy(key->pub_key.key, GIVEME_BLOCKCHAIN_SIGNATURE_GENESIS_KEY, sizeof(key->pub_key.key));
     sha256_data(&transaction->data, transaction->hash, sizeof(transaction->data));
-
     genesis_block.data.nounce = atoi(GIVEME_BLOCKCHAIN_GENESIS_NOUNCE);
-    // strncpy(genesis_block.hash, GIVEME_BLOCKCHAIN_GENESIS_HASH, sizeof(genesis_block.hash));
     int res = giveme_mine(&genesis_block);
     if (res < 0)
     {
@@ -659,17 +657,21 @@ int giveme_block_verify_for_chain(struct blockchain *chain, struct block *block)
         return GIVEME_BLOCKCHAIN_BAD_PREVIOUS_HASH;
     }
 
-    char tmp_hash[SHA256_STRING_LENGTH];
-    sha256_data(&block->data, tmp_hash, sizeof(block->data));
-    if (public_verify_key_sig_hash(&block->signature, tmp_hash) < 0)
+    // If this is the first block then we wil ignore verification of transactions and key
+    if (giveme_blockchain_block_count() > 0)
     {
-        return GIVEME_BLOCKCHAIN_BAD_BLOCK_SIGNATURE;
-    }
+        char tmp_hash[SHA256_STRING_LENGTH];
+        sha256_data(&block->data, tmp_hash, sizeof(block->data));
+        if (public_verify_key_sig_hash(&block->signature, tmp_hash) < 0)
+        {
+            return GIVEME_BLOCKCHAIN_BAD_BLOCK_SIGNATURE;
+        }
 
-    if (giveme_block_verify_transactions(block) < 0)
-    {
-        giveme_log("%s bad illegal transactions were provided therefore block verification has failed\n", __FUNCTION__);
-        return GIVEME_BLOCKCHAIN_BAD_BLOCK_TRANSACTIONS;
+        if (giveme_block_verify_transactions(block) < 0)
+        {
+            giveme_log("%s bad illegal transactions were provided therefore block verification has failed\n", __FUNCTION__);
+            return GIVEME_BLOCKCHAIN_BAD_BLOCK_TRANSACTIONS;
+        }
     }
     return GIVEME_BLOCKCHAIN_BLOCK_VALID;
 }
@@ -724,11 +726,15 @@ int giveme_mine(struct block *block)
     block->data.nounce = rand() % 0xffffff;
     char tmp_hash[SHA256_STRING_LENGTH];
     sha256_data(&block->data, tmp_hash, sizeof(block->data));
-    res = private_sign_key_sig_hash(&block->signature, tmp_hash);
-    if (res < 0)
+    // We never sign the first block
+    if (giveme_blockchain_block_count() > 0)
     {
-        giveme_log("%s failed to sign block with my private key\n", __FUNCTION__);
-        goto out;
+        res = private_sign_key_sig_hash(&block->signature, tmp_hash);
+        if (res < 0)
+        {
+            giveme_log("%s failed to sign block with my private key\n", __FUNCTION__);
+            goto out;
+        }
     }
     giveme_log("Mined a block %s previous block %s\n", giveme_blockchain_block_hash(block), previous_block ? giveme_blockchain_block_hash(previous_block) : "NULL");
     // We mined a block? Then add it to the blockchain and tell everyone else about it
