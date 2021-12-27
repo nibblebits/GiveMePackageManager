@@ -726,6 +726,7 @@ int giveme_mine(struct block *block)
     block->data.nounce = rand() % 0xffffff;
     char tmp_hash[SHA256_STRING_LENGTH];
     sha256_data(&block->data, tmp_hash, sizeof(block->data));
+    strncpy(block->signature.data_hash, tmp_hash, sizeof(block->signature.data_hash));
     // We never sign the first block
     if (giveme_blockchain_block_count() > 0)
     {
