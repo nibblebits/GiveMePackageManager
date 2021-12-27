@@ -723,7 +723,7 @@ int giveme_mine(struct block *block)
 
     block->data.nounce = rand() % 0xffffff;
     char tmp_hash[SHA256_STRING_LENGTH];
-    sha256_data(&block->data, tmp_hash, sizeof(tmp_hash));
+    sha256_data(&block->data, tmp_hash, sizeof(block->data));
     res = private_sign_key_sig_hash(&block->signature, tmp_hash);
     if (res < 0)
     {
