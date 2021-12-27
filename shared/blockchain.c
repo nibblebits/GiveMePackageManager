@@ -608,6 +608,9 @@ void giveme_blockchain_initialize()
         // Error: initialization failed
         giveme_log("%s failed to initialize blockchain_ready_sem\n");
     }
+
+    // For now we reload the cache every time the chain starts.. not efficient.
+    giveme_blockchain_cache_reload();
 }
 
 int giveme_block_verify_transaction(struct block *block, struct block_transaction *transaction)
