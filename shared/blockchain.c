@@ -495,6 +495,7 @@ bool giveme_blockchain_can_add_blocks(size_t amount)
 
     return true;
 }
+
 void giveme_blockchain_create_genesis_block()
 {
     giveme_log("%s creating genesis block for first time blockchain use\n", __FUNCTION__);
