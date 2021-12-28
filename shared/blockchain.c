@@ -632,7 +632,7 @@ int giveme_block_verify_transaction(struct block *block, struct block_transactio
     if (transaction->data.type == BLOCK_TRANSACTION_TYPE_NEW_PACKAGE)
     {
         char tmp_hash[SHA256_STRING_LENGTH];
-        sha256_data(&transaction->data, tmp_hash, sizeof(transaction->data));
+        sha256_data(&transaction->data.publish_package.data, tmp_hash, sizeof(transaction->data.publish_package.data));
         if (public_verify_key_sig_hash(&transaction->data.publish_package.signature, tmp_hash) < 0)
         {
             return -1;
