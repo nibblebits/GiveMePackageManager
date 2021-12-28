@@ -345,7 +345,7 @@ int giveme_package_create(const char *path, const char *package_name)
     sha256_file(dst_path_hashed, packet.data.publish_package.data.filehash);
 
     char tmp_hash[SHA256_STRING_LENGTH];
-    sha256_data(&packet.data.publish_package.data, tmp_hash, sizeof(tmp_hash));
+    sha256_data(&packet.data.publish_package.data, tmp_hash, sizeof(packet.data.publish_package.data));
     // We must sign the data
     res = private_sign_key_sig_hash(&packet.data.publish_package.signature, tmp_hash);
     if (res < 0)
