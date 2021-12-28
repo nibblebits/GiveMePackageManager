@@ -1293,11 +1293,11 @@ void giveme_network_packets_process()
 int giveme_network_create_block_transaction_for_network_transaction_new_package(struct network_transaction *transaction, struct block_transaction *transaction_out)
 {
     char tmp_hash[SHA256_STRING_LENGTH];
-    sha256_data(&transaction_out->data.publish_package.data, tmp_hash, sizeof(transaction_out->data.publish_package.data));
     transaction_out->data.type = BLOCK_TRANSACTION_TYPE_NEW_PACKAGE;
     memcpy(&transaction_out->data.publish_package.data, &transaction->packet.data.publish_package.data, sizeof(transaction_out->data.publish_package.data));
     transaction_out->data.publish_package.signature = transaction->packet.data.publish_package.signature;
-
+    
+    sha256_data(&transaction_out->data.publish_package.data, tmp_hash, sizeof(transaction_out->data.publish_package.data));
     if (public_verify_key_sig_hash(&transaction_out->data.publish_package.signature, tmp_hash) < 0)
     {
         giveme_log("%s received new package transaction but the package data was signed incorrectly\n", __FUNCTION__);
