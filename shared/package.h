@@ -8,8 +8,7 @@
 // Packages we have downloaded already.
 struct package
 {
-    // The block that proves this package.
-    struct block block;
+
     struct package_details
     {
         char name[GIVEME_PACKAGE_NAME_MAX];
@@ -22,6 +21,9 @@ struct package
     // This is used as an identifier.
     char transaction_hash[SHA256_STRING_LENGTH];
 
+    // The block hash that proves this package.
+    char block_hash[SHA256_STRING_LENGTH];
+    
     struct package_downloaded
     {
         // True if we have already downloaded this file

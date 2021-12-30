@@ -145,7 +145,7 @@ int giveme_packages_push(struct block *block, char *package_name, char *transact
             goto out;
         }
 
-        package->block = *block;
+        strncpy(package->block_hash, block->signature.data_hash, sizeof(package->block_hash));
         strncpy(package->details.name, package_name, sizeof(package->details.name));
         strncpy(package->details.filehash, filehash, sizeof(package->details.filehash));
         strncpy(package->transaction_hash, transaction_hash, sizeof(package->transaction_hash));
