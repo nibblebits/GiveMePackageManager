@@ -3,6 +3,8 @@
 #include "config.h"
 #include "blockchain.h"
 
+#include <limits.h>
+
 // Packages we have downloaded already.
 struct package
 {
@@ -89,5 +91,21 @@ bool giveme_package_downloaded(const char* filehash);
  */
 bool giveme_packages_exists();
 
+
+/**
+ * @brief Returns the total packages published on this network
+ * 
+ * @return size_t 
+ */
+size_t giveme_packages_total();
+
+/**
+ * @brief Sets the package_out to the package with the given index, if out of bounds -1 is returned, otherwise 0
+ * 
+ * @param x 
+ * @param package_out 
+ * @return int 0 on success otherwise a negative number
+ */
+int giveme_packages_get_by_index(int x, struct package* package_out);
 
 #endif

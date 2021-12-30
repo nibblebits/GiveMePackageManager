@@ -129,8 +129,31 @@ struct blockchain_individual giveme_info(int sfd)
 
     assert(res_packet.type == NETWORK_AF_UNIX_PACKET_TYPE_INFO_RESPONSE);
 
-
     return res_packet.info_response.individual;
+}
+
+int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_packages* packages_res_out)
+{
+    struct network_af_unix_packet packet = {};
+    packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES;
+    packet.packages.page = page;
+    // Send the packet
+    if (giveme_af_unix_write(sfd, &packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
+    {
+        printf("Failed to send packet to server\n");
+        return -1;
+    }
+
+    // Let's read back the publish response
+    struct network_af_unix_packet res_packet;
+    if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
+    {
+        printf("Failed to receive response packet from server\n");
+        return -1;
+    }
+
+    memcpy(packages_res_out, &packet.packages_response, sizeof(struct network_af_unix_packages_response_packages));
+    return 0;
 }
 
 int giveme_download(int sfd, const char *package_name)
@@ -256,6 +279,31 @@ int giveme_network_af_unix_handle_packet_my_info(int sock, struct network_af_uni
     return 0;
 }
 
+int giveme_network_af_unix_handle_packet_packages(int sock, struct network_af_unix_packet *packet)
+{
+
+    struct network_af_unix_packet res_packet = {};
+    res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES_RESPONSE;
+    int page = packet->packages.page;
+    int s_index = page * 10;
+    int e_index = s_index + 10;
+    giveme_packages_lock();
+    int count = 0;
+    for (int i = s_index; i < e_index; i++)
+    {
+        int res = giveme_packages_get_by_index(i, &res_packet.packages_response.packages.packages[count]);
+        if (res < 0)
+        {
+            break;
+        }
+
+        count++;
+    }
+    giveme_packages_unlock();
+    res_packet.packages_response.page = page;
+    giveme_af_unix_write(sock, &res_packet);
+    return 0;
+}
 int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet *packet)
 {
     int res = 0;
@@ -267,6 +315,10 @@ int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet
 
     case NETWORK_AF_UNIX_PACKET_TYPE_MAKE_FAKE_BLOCKCHAIN:
         res = giveme_network_af_unix_handle_packet_make_fake_blockchain(sock, packet);
+        break;
+
+    case NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES:
+        res = giveme_network_af_unix_handle_packet_packages(sock, packet);
         break;
 
     case NETWORK_AF_UNIX_PACKET_TYPE_SIGNUP:

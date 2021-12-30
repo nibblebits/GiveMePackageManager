@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "config.h"
+#include "package.h"
 #include "af_unix_network.h"
 #include "network.h"
 #include "misc.h"
@@ -18,6 +19,34 @@ int publish_package(int argc, char *argv[])
 	giveme_publish(sock, argv[2], argv[3]);
 
 	return 0;
+}
+
+void packages_print(struct package* packages, size_t total)
+{
+	printf("Total known packages on network %i\n", (int)total);
+	for (int i = 0; i < total; i++)
+	{
+		printf("%s : %s : %s", packages[i].details.name, packages[i].details.description, packages[i].details.filehash);
+	}
+}
+int packages(int argc, char* argv[])
+{
+	if (argc < GIVEME_REQUIRED_PACKAGES_ARGC)
+	{
+		printf("Not enough arguments to display packages\n");
+		return -1;
+	}
+
+	int sock = giveme_af_unix_connect();
+	struct network_af_unix_packages_response_packages packages;
+	int res = giveme_packages(sock, 0, &packages);
+	if (res < 0)
+	{
+		printf("Problem getting packages\n");
+		return -1;
+	}
+
+	packages_print(packages.packages, packages.total);
 }
 
 int signup(int argc, char *argv[])
@@ -91,6 +120,10 @@ int main(int argc, char *argv[])
 	else if (S_EQ(argv[1], "info"))
 	{
 		return get_my_info(argc, argv);
+	}
+	else if(S_EQ(argv[1], "packages"))
+	{
+		return packages(argc, argv);
 	}
 
 	return 0;

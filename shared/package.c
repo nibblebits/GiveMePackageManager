@@ -24,14 +24,44 @@ struct known_packages
 {
     // The packages that we are aware of
     struct package *packages;
+    size_t total;
     size_t total_possible_packages;
     int fd;
     pthread_mutex_t mutex;
 } packages;
 
+void giveme_packages_calculate_total()
+{
+    struct package blank_package;
+    bzero(&blank_package, sizeof(blank_package));
+    for (int i = 0; i < packages.total_possible_packages; i++)
+    {
+        if (memcmp(&packages.packages[i], &blank_package, sizeof(blank_package)) == 0)
+        {
+            break;
+        }
+        packages.total++;
+    }
+}
 size_t giveme_packages_size()
 {
     return packages.total_possible_packages * sizeof(struct package);
+}
+
+size_t giveme_packages_total()
+{
+    return packages.total;
+}
+
+int giveme_packages_get_by_index(int x, struct package* package_out)
+{
+    if (x >= packages.total)
+    {
+        return -1;
+    }
+
+    memcpy(&package_out, &packages.packages[x], sizeof(struct package));
+    return 0;
 }
 
 void giveme_packages_extend()
@@ -288,6 +318,12 @@ int giveme_package_initialize_packages()
     }
 
     res = giveme_packages_mapping_build();
+    if (res < 0)
+    {
+        goto out;
+    }
+
+    giveme_packages_calculate_total();
 out:
     return res;
 }
