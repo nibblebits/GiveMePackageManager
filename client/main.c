@@ -26,7 +26,7 @@ void packages_print(struct package* packages, size_t total)
 	printf("Total known packages on network %i\n", (int)total);
 	for (int i = 0; i < total; i++)
 	{
-		printf("%s : %s : %s", packages[i].details.name, packages[i].details.description, packages[i].details.filehash);
+		printf("%s : %s : %s\n", packages[i].details.name, packages[i].details.description, packages[i].details.filehash);
 	}
 }
 int packages(int argc, char* argv[])

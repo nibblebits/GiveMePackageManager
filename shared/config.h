@@ -74,6 +74,7 @@
 #define PACKAGES_TOTAL_ENTITIES 2056
 
 // The maximum known ip addresses in a package cache..
-#define PACKAGE_MAX_KNOWN_IP_ADDRESSES 64
+#define PACKAGE_MAX_KNOWN_IP_ADDRESSES 32
 
+#define PACKAGE_MAX_PER_PAGE 10
 #endif

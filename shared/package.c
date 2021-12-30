@@ -60,7 +60,7 @@ int giveme_packages_get_by_index(int x, struct package* package_out)
         return -1;
     }
 
-    memcpy(&package_out, &packages.packages[x], sizeof(struct package));
+    memcpy(package_out, &packages.packages[x], sizeof(struct package));
     return 0;
 }
 

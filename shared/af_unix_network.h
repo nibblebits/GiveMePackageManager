@@ -81,7 +81,7 @@ struct network_af_unix_packet
             struct network_af_unix_packages_response_packages
             {
                 size_t total;
-                struct package packages[10];
+                struct package packages[PACKAGE_MAX_PER_PAGE];
             } packages;
         } packages_response;
     };

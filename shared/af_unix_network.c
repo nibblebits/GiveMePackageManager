@@ -134,7 +134,8 @@ struct blockchain_individual giveme_info(int sfd)
 
 int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_packages* packages_res_out)
 {
-    struct network_af_unix_packet packet = {};
+    static struct network_af_unix_packet packet;
+    bzero(&packet, sizeof(packet));
     packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES;
     packet.packages.page = page;
     // Send the packet
@@ -145,14 +146,14 @@ int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_
     }
 
     // Let's read back the publish response
-    struct network_af_unix_packet res_packet;
+    static struct network_af_unix_packet res_packet;
     if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
     {
         printf("Failed to receive response packet from server\n");
         return -1;
     }
 
-    memcpy(packages_res_out, &packet.packages_response, sizeof(struct network_af_unix_packages_response_packages));
+    memcpy(packages_res_out, &res_packet.packages_response.packages, sizeof(struct network_af_unix_packages_response_packages));
     return 0;
 }
 
@@ -281,12 +282,12 @@ int giveme_network_af_unix_handle_packet_my_info(int sock, struct network_af_uni
 
 int giveme_network_af_unix_handle_packet_packages(int sock, struct network_af_unix_packet *packet)
 {
-
-    struct network_af_unix_packet res_packet = {};
+    static struct network_af_unix_packet res_packet = {};    
+    bzero(&res_packet, sizeof(res_packet));
     res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES_RESPONSE;
     int page = packet->packages.page;
-    int s_index = page * 10;
-    int e_index = s_index + 10;
+    int s_index = page * PACKAGE_MAX_PER_PAGE;
+    int e_index = s_index + PACKAGE_MAX_PER_PAGE;
     giveme_packages_lock();
     int count = 0;
     for (int i = s_index; i < e_index; i++)
@@ -297,6 +298,7 @@ int giveme_network_af_unix_handle_packet_packages(int sock, struct network_af_un
             break;
         }
 
+        res_packet.packages_response.packages.total++;
         count++;
     }
     giveme_packages_unlock();
@@ -334,7 +336,7 @@ int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet
 int giveme_network_server_af_unix_read(int sock)
 {
     int res = 0;
-    struct network_af_unix_packet packet;
+    static struct network_af_unix_packet packet;
     res = giveme_af_unix_read(sock, &packet);
     if (res < 0)
         return res;
