@@ -1018,9 +1018,11 @@ void giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packe
         return;
     }
 
-    giveme_blockchain_add_block(&packet->data.verified_block.block);
-
-    giveme_network_clear_network_transactions_of_block(&packet->data.verified_block.block);
+    int res = giveme_blockchain_add_block(&packet->data.verified_block.block);
+    if (res < 0)
+    {
+        giveme_network_clear_network_transactions_of_block(&packet->data.verified_block.block);
+    }
     network.blockchain.last_block_receive = time(NULL);
     network.blockchain.last_block_processed = time(NULL);
 }
@@ -1618,7 +1620,10 @@ int giveme_network_process_thread(struct queued_work *work)
         }
 
         giveme_network_packets_process();
+
+        giveme_lock_chain();
         giveme_network_make_block_if_possible();
+        giveme_unlock_chain();
         sleep(1);
     }
     return 0;
