@@ -301,7 +301,7 @@ int giveme_network_process_thread_start()
 int giveme_network_listen()
 {
     int err = 0;
-    network.listen_socket = giveme_tcp_network_listen(&network.listen_address, GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS, GIVEME_TCP_PORT, GIVEME_TCP_SERVER_MAX_CONNECTIONS);
+    network.listen_socket = giveme_tcp_network_listen(&network.listen_address, 0, GIVEME_TCP_PORT, GIVEME_TCP_SERVER_MAX_CONNECTIONS);
     if (network.listen_socket < 0)
     {
         giveme_log("Problem listening on port %i\n", GIVEME_TCP_PORT);
@@ -339,6 +339,7 @@ int giveme_tcp_network_accept(int sock, struct sockaddr_in *client_out)
 {
     struct sockaddr_in client;
     int client_len = sizeof(client);
+
     int connfd = accept(sock, (struct sockaddr *)&client, &client_len);
     if (connfd < 0)
     {
@@ -398,6 +399,18 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
 {
     int res = 0;
     size_t amount_left = amount;
+
+    struct timeval timeout;
+    timeout.tv_sec = GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                   sizeof timeout) < 0)
+    {
+        giveme_log("Failed to set socket timeout\n");
+        return -1;
+    }
+
     while (amount_left != 0)
     {
         res = recv(client, ptr, amount, MSG_WAITALL);
@@ -955,7 +968,7 @@ void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *pack
         giveme_log("%s the package to be published was incorrectly signed\n", __FUNCTION__);
         return;
     }
-    
+
     if (strnlen(packet->data.publish_package.ip_address, sizeof(packet->data.publish_package.ip_address)) <= 0)
     {
         // No IP address was provided therefore we must set it.
