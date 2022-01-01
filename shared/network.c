@@ -301,7 +301,7 @@ int giveme_network_process_thread_start()
 int giveme_network_listen()
 {
     int err = 0;
-    network.listen_socket = giveme_tcp_network_listen(&network.listen_address, false, GIVEME_TCP_PORT, GIVEME_TCP_SERVER_MAX_CONNECTIONS);
+    network.listen_socket = giveme_tcp_network_listen(&network.listen_address, GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS, GIVEME_TCP_PORT, GIVEME_TCP_SERVER_MAX_CONNECTIONS);
     if (network.listen_socket < 0)
     {
         giveme_log("Problem listening on port %i\n", GIVEME_TCP_PORT);
@@ -1296,7 +1296,7 @@ int giveme_network_create_block_transaction_for_network_transaction_new_package(
     transaction_out->data.type = BLOCK_TRANSACTION_TYPE_NEW_PACKAGE;
     memcpy(&transaction_out->data.publish_package.data, &transaction->packet.data.publish_package.data, sizeof(transaction_out->data.publish_package.data));
     transaction_out->data.publish_package.signature = transaction->packet.data.publish_package.signature;
-    
+
     sha256_data(&transaction_out->data.publish_package.data, tmp_hash, sizeof(transaction_out->data.publish_package.data));
     if (public_verify_key_sig_hash(&transaction_out->data.publish_package.signature, tmp_hash) < 0)
     {

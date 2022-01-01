@@ -76,5 +76,5 @@
 // The maximum known ip addresses in a package cache..
 #define PACKAGE_MAX_KNOWN_IP_ADDRESSES 32
 
-#define PACKAGE_MAX_PER_PAGE 10
+#define PACKAGE_MAX_PER_PAGE 1
 #endif

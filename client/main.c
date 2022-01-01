@@ -21,15 +21,14 @@ int publish_package(int argc, char *argv[])
 	return 0;
 }
 
-void packages_print(struct package* packages, size_t total)
+void packages_print(struct package *packages, size_t total)
 {
-	printf("Total known packages on network %i\n", (int)total);
 	for (int i = 0; i < total; i++)
 	{
 		printf("%s : %s : %s\n", packages[i].details.name, packages[i].details.description, packages[i].details.filehash);
 	}
 }
-int packages(int argc, char* argv[])
+int packages(int argc, char *argv[])
 {
 	if (argc < GIVEME_REQUIRED_PACKAGES_ARGC)
 	{
@@ -37,16 +36,34 @@ int packages(int argc, char* argv[])
 		return -1;
 	}
 
-	int sock = giveme_af_unix_connect();
-	struct network_af_unix_packages_response_packages packages;
-	int res = giveme_packages(sock, 0, &packages);
-	if (res < 0)
+	int page = 0;
+	while (1)
 	{
-		printf("Problem getting packages\n");
-		return -1;
-	}
+		for (int i = 0; i < 5; i++)
+		{
+			int sock = giveme_af_unix_connect();
+			struct network_af_unix_packages_response_packages packages;
+			int res = giveme_packages(sock, (page * 5) + i, &packages);
+			if (res < 0)
+			{
+				printf("Problem getting packages\n");
+				return -1;
+			}
 
-	packages_print(packages.packages, packages.total);
+			close(sock);
+
+			if (packages.total == 0)
+			{
+				printf("You have reached the end of the available packages. To create your own use giveme publish command\n");
+				return 0;
+			}
+			packages_print(packages.packages, packages.total);
+		}
+		page++;
+
+		printf("Press any to load more\n");
+		getchar();
+	}
 }
 
 int signup(int argc, char *argv[])
@@ -121,7 +138,7 @@ int main(int argc, char *argv[])
 	{
 		return get_my_info(argc, argv);
 	}
-	else if(S_EQ(argv[1], "packages"))
+	else if (S_EQ(argv[1], "packages"))
 	{
 		return packages(argc, argv);
 	}

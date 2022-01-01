@@ -381,10 +381,10 @@ int giveme_af_unix_listen()
         if (cfd == -1)
             handle_error("Issue accepting socket");
 
-        int res = giveme_network_server_af_unix_read(cfd);
-        if (res != NETWORK_AF_UNIX_PACKET_IO_OKAY)
-        {
-            close(cfd);
-        }
+        giveme_network_server_af_unix_read(cfd);
+
+        // Our AF_UNIX protocol will allow for a one time message exchange then we will close
+        // the connection.
+        close(cfd);
     }
 }
