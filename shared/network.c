@@ -601,9 +601,6 @@ struct network_connection *giveme_network_connection_find_slot(pthread_mutex_t *
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-        if (pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
-            continue;
-
         if (network.connections[i].data == NULL)
         {
             // Since we found a free slot we expect the caller to unlock the mutex
@@ -612,7 +609,6 @@ struct network_connection *giveme_network_connection_find_slot(pthread_mutex_t *
 
             return &network.connections[i];
         }
-        pthread_mutex_unlock(&network.connections[i].lock);
     }
 
     return NULL;
@@ -808,14 +804,8 @@ void giveme_network_broadcast(struct giveme_tcp_packet *packet)
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-        if (pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
-        {
-            continue;
-        }
-
         if (!network.connections[i].data)
         {
-            pthread_mutex_unlock(&network.connections[i].lock);
             continue;
         }
 
@@ -826,7 +816,6 @@ void giveme_network_broadcast(struct giveme_tcp_packet *packet)
             giveme_network_disconnect(&network.connections[i]);
         }
 
-        pthread_mutex_unlock(&network.connections[i].lock);
     }
 }
 
