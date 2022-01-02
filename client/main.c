@@ -25,7 +25,7 @@ void packages_print(struct package *packages, size_t total)
 {
 	for (int i = 0; i < total; i++)
 	{
-		printf("%s : %s : %s\n", packages[i].details.name, packages[i].details.description, packages[i].details.filehash);
+		printf("%s : %s : %s : Size=%lld\n", packages[i].details.name, packages[i].details.description, packages[i].details.filehash, (long long int)packages[i].details.size);
 	}
 }
 int packages(int argc, char *argv[])
