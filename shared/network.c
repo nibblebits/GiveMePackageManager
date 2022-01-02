@@ -1502,7 +1502,6 @@ void giveme_network_update_chain_from_found_peers()
     }
     giveme_blockchain_changes_apply();
     giveme_blockchain_give_ready_signal();
-    giveme_unlock_chain();
 }
 int giveme_network_make_block_if_possible()
 {
