@@ -422,7 +422,7 @@ void giveme_blockchain_handle_added_block_transaction_new_package(struct block *
     {
         filepath = giveme_package_path(package_data->filehash);
     }
-    res = giveme_packages_push(block, package_data->name, transaction->hash, package_data->filehash, filepath, publish_package_transaction->ip_address);
+    res = giveme_packages_push(block, package_data->name, transaction->hash, package_data->filehash, filepath, publish_package_transaction->ip_address, publish_package_transaction->data.size);
     if (res < 0)
     {
         giveme_log("%s problem pushing package to cache\n", __FUNCTION__);

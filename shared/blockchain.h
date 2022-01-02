@@ -122,6 +122,9 @@ struct block_transaction_new_package_data
     // The hash of the data of this package. Will be used to prove we downloaded the correct file
     // and a malicious party did not send us something fake.
     char filehash[SHA256_STRING_LENGTH];
+
+    // The size of the package data its self.
+    size_t size;
 };
 
 struct block_transaction

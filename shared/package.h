@@ -15,10 +15,12 @@ struct package
         char description[GIVEME_PACKAGE_DESCRIPTION_MAX];
         char filehash[SHA256_STRING_LENGTH];
 
+        // The size of the data of this package.
+        size_t size;
+
     } details;
 
     // The hash of the transaction that created this package..
-    // This is used as an identifier.
     char transaction_hash[SHA256_STRING_LENGTH];
 
     // The block hash that proves this package.
@@ -49,10 +51,10 @@ void giveme_packages_unlock();
  * @param filehash The data hash of the entire file data related to this pacakge
  * @param filepath The filepath on our local hard disk where this file can be located. NULL if not downloaded yet.
  * @param known_ip_address The IP address that we know of where this package can be located.
+ * @param size The total size in bytes of the package data
  * @return int Returns zero on success otherwise a negative number.
  */
-int giveme_packages_push(struct block *block, char *package_name, char *transaction_hash, const char *filehash, const char *filepath, const char *known_ip_address);
-
+int giveme_packages_push(struct block *block, char *package_name, char *transaction_hash, const char *filehash, const char *filepath, const char *known_ip_address, size_t size);
 int giveme_package_initialize();
 int giveme_package_create(const char *path, const char *package_name);
 

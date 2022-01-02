@@ -228,6 +228,12 @@ int giveme_network_dataexchange_handle_request_block(struct giveme_dataexchange_
 out:
     return res;
 }
+
+int giveme_network_dataexchange_handle_package_send_block(struct giveme_dataexchange_tcp_packet *packet, struct network_connection_data *connection)
+{
+    return 0;
+}
+
 int giveme_network_dataexchange_connection(struct queued_work *work)
 {
     int res = 0;
@@ -244,6 +250,10 @@ int giveme_network_dataexchange_connection(struct queued_work *work)
 
     case GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_REQUEST_BLOCK:
         res = giveme_network_dataexchange_handle_request_block(&packet, conn);
+        break;
+
+    case GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_REQUEST_CHUNK:
+        res = giveme_network_dataexchange_handle_package_send_block(&packet, conn);
         break;
 
     default:
@@ -1392,6 +1402,41 @@ void giveme_network_update_chain()
     giveme_network_broadcast(&update_chain_packet);
 }
 
+int giveme_network_request_package_chunk(struct network_connection_data *peer, const char *package_hash, off_t block_id)
+{
+    int res = 0;
+    giveme_log("%s requesting package with hash %s, block_id=%i, block_size=%i ", __FUNCTION__, package_hash, block_id, GIVEME_PACKAGE_BLOCK_SIZE);
+    int sock = giveme_tcp_network_connect(peer->addr.sin_addr, GIVEME_TCP_DATA_EXCHANGE_PORT, 0);
+    if (sock < 0)
+    {
+        giveme_log("%s Failed to connect to peer to download block\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    giveme_log("%s connected, requesting package chunk\n", __FUNCTION__);
+    // First thing we do is send a request for a chain
+    struct giveme_dataexchange_tcp_packet packet = {};
+    packet.type = GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_REQUEST_CHUNK;
+    packet.package_request_chunk.index = block_id;
+    strncpy(packet.package_request_chunk.package.data_hash, package_hash, sizeof(packet.package_request_chunk.package.data_hash));
+    res = giveme_tcp_dataexchange_send_packet(sock, &packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to send data exchange packet\n", __FUNCTION__);
+        goto out;
+    }
+
+    // Now we expect a resposne
+    res = giveme_tcp_dataexchange_recv_packet(sock, &packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to receive resposne from data exchange server\n", __FUNCTION__);
+        goto out;
+    }
+out:
+    return res;
+}
 int giveme_network_update_chain_for_block_from_peer(struct network_connection_data *peer, int block_index)
 {
     int res = 0;
@@ -1454,6 +1499,7 @@ out:
     close(sock);
     return res;
 }
+
 void giveme_network_update_chain_from_found_peers()
 {
     giveme_blockchain_changes_prepare();
@@ -1614,7 +1660,7 @@ int giveme_network_process_thread(struct queued_work *work)
         }
 
         giveme_network_packets_process();
-        
+
         giveme_network_make_block_if_possible();
         giveme_unlock_chain();
         sleep(1);

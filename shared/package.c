@@ -131,7 +131,7 @@ int giveme_packages_add_ip_address(struct package *package, const char *ip)
 
     return res;
 }
-int giveme_packages_push(struct block *block, char *package_name, char *transaction_hash, const char *filehash, const char *filepath, const char *known_ip_address)
+int giveme_packages_push(struct block *block, char *package_name, char *transaction_hash, const char *filehash, const char *filepath, const char *known_ip_address, size_t size)
 {
     int res = 0;
     struct package *package = giveme_packages_get_by_transaction_hash(transaction_hash);
@@ -149,7 +149,7 @@ int giveme_packages_push(struct block *block, char *package_name, char *transact
         strncpy(package->details.name, package_name, sizeof(package->details.name));
         strncpy(package->details.filehash, filehash, sizeof(package->details.filehash));
         strncpy(package->transaction_hash, transaction_hash, sizeof(package->transaction_hash));
-
+        package->details.size = size;
         if (filepath)
         {
             strncpy(package->downloaded.filepath, filepath, sizeof(package->downloaded.filepath));
@@ -379,9 +379,10 @@ int giveme_package_create(const char *path, const char *package_name)
     packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE;
     strncpy(packet.data.publish_package.data.name, package_name, sizeof(packet.data.publish_package.data.name));
     sha256_file(dst_path_hashed, packet.data.publish_package.data.filehash);
-
+    packet.data.publish_package.data.size = filesize(dst_path_hashed);
     char tmp_hash[SHA256_STRING_LENGTH];
     sha256_data(&packet.data.publish_package.data, tmp_hash, sizeof(packet.data.publish_package.data));
+    
     // We must sign the data
     res = private_sign_key_sig_hash(&packet.data.publish_package.signature, tmp_hash);
     if (res < 0)

@@ -66,7 +66,9 @@ enum
     GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_UNABLE_TO_HELP,
     GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_CHAIN,
     GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_REQUEST_BLOCK,
-    GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_BLOCK
+    GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_SENDING_BLOCK,
+    GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_REQUEST_CHUNK,
+    GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_SEND_CHUNK
 };
 
 struct giveme_dataexchange_tcp_packet
@@ -113,6 +115,18 @@ struct giveme_dataexchange_tcp_packet
             // The block index of the block, following will be one block
             int block_index;
         } sending_block;
+
+        struct giveme_dataexchange_package_request_chunk
+        {
+            struct giveme_dataexchange_package_request_chunk_package
+            {
+                char data_hash[SHA256_STRING_LENGTH];
+            } package;
+
+            // The chunk index. Offset = index * GIVEME_PACKAGE_BLOCK_SIZE
+            // Chunk size is GIVEME_PACKAGE_BLOCK_SIZE
+            off_t index;
+        } package_request_chunk;
     };
 };
 enum

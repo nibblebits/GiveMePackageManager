@@ -16,6 +16,19 @@ bool file_exists(const char *filename)
     return exists;
 }
 
+size_t filesize(const char* filename)
+{
+    FILE* f = fopen(filename, "r");
+    if (!f)
+        return -1;
+
+    fseek(f, 0, SEEK_END);
+
+    size_t size = ftell(f);
+    fclose(f);
+    return size;
+}
+
 void bin2hex(char *input, size_t input_size, char *output)
 {
     int loop = 0;
