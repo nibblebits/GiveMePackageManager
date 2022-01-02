@@ -601,6 +601,9 @@ struct network_connection *giveme_network_connection_find_slot(pthread_mutex_t *
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
+        if (pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
+            continue;
+
         if (network.connections[i].data == NULL)
         {
             // Since we found a free slot we expect the caller to unlock the mutex
@@ -609,6 +612,7 @@ struct network_connection *giveme_network_connection_find_slot(pthread_mutex_t *
 
             return &network.connections[i];
         }
+        pthread_mutex_unlock(&network.connections[i].lock);
     }
 
     return NULL;
@@ -804,8 +808,14 @@ void giveme_network_broadcast(struct giveme_tcp_packet *packet)
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
+        if (pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
+        {
+            continue;
+        }
+
         if (!network.connections[i].data)
         {
+            pthread_mutex_unlock(&network.connections[i].lock);
             continue;
         }
 
@@ -816,6 +826,7 @@ void giveme_network_broadcast(struct giveme_tcp_packet *packet)
             giveme_network_disconnect(&network.connections[i]);
         }
 
+        pthread_mutex_unlock(&network.connections[i].lock);
     }
 }
 
@@ -935,11 +946,9 @@ void giveme_network_ping()
     struct giveme_tcp_packet packet = {};
     packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PING;
 
-    giveme_lock_chain();
     struct block *last_block = giveme_blockchain_back();
     assert(last_block);
     memcpy(packet.data.ping.last_hash, giveme_blockchain_block_hash(last_block), sizeof(packet.data.ping.last_hash));
-    giveme_unlock_chain();
     giveme_network_broadcast(&packet);
 }
 
@@ -1057,7 +1066,6 @@ out:
 
 void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
-    giveme_lock_chain();
 
     giveme_log("%s update chain request\n", __FUNCTION__);
 
@@ -1082,7 +1090,7 @@ void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet,
     }
 
 out:
-    giveme_unlock_chain();
+    return;
 }
 
 int giveme_network_download_chain(struct in_addr addr, int port, const char *start_hash)
@@ -1210,11 +1218,9 @@ bool giveme_network_needs_chain_update_do_lock()
 {
     bool needs_update = false;
     // Nested locks... yikes..
-    giveme_lock_chain();
     giveme_network_known_hashes_lock();
     needs_update = !S_EQ(network.hashes.famous_hash, giveme_blockchain_block_hash(giveme_blockchain_back()));
     giveme_network_known_hashes_unlock();
-    giveme_unlock_chain();
 
     return needs_update;
 }
@@ -1380,11 +1386,9 @@ void giveme_network_broadcast_block(struct block *block)
 void giveme_network_update_chain()
 {
     giveme_log("%s asking the network for the most up to date chain\n", __FUNCTION__);
-    giveme_lock_chain();
     struct giveme_tcp_packet update_chain_packet;
     update_chain_packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN;
     memcpy(update_chain_packet.data.update_chain.last_hash, giveme_blockchain_block_hash(giveme_blockchain_back()), sizeof(update_chain_packet.data.update_chain.last_hash));
-    giveme_unlock_chain();
     giveme_network_broadcast(&update_chain_packet);
 }
 
@@ -1452,7 +1456,6 @@ out:
 }
 void giveme_network_update_chain_from_found_peers()
 {
-    giveme_lock_chain();
     giveme_blockchain_changes_prepare();
     int tail_next_index = giveme_blockchain_index() + 1;
     int current_index = tail_next_index;
@@ -1576,6 +1579,9 @@ int giveme_network_process_thread(struct queued_work *work)
 {
     while (1)
     {
+        // Kept getting issues with lock order. We will lock in the actual loop
+        // this may result in slower operations than expected.
+        giveme_lock_chain();
         giveme_network_ping();
         if (network.blockchain.chain_requesting_update && (time(NULL) - network.blockchain.last_chain_update_request) > 30)
         {
@@ -1609,8 +1615,7 @@ int giveme_network_process_thread(struct queued_work *work)
         }
 
         giveme_network_packets_process();
-
-        giveme_lock_chain();
+        
         giveme_network_make_block_if_possible();
         giveme_unlock_chain();
         sleep(1);
