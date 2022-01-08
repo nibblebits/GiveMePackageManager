@@ -6,24 +6,23 @@
 #include "tpool.h"
 #include "log.h"
 #include "vector.h"
-pthread_t *threads = NULL;
-size_t t_threads = 0;
-struct vector *queued_work_vec;
-pthread_mutex_t queued_work_vec_lock;
+
+struct thread_pool main_pool = {};
 
 void *giveme_thread(void *arg)
 {
+    struct thread_pool *current_pool = arg;
     while (1)
     {
         struct queued_work *work = NULL;
-        pthread_mutex_lock(&queued_work_vec_lock);
-        work = vector_back_ptr_or_null(queued_work_vec);
+        pthread_mutex_lock(&current_pool->queued_work_vec_lock);
+        work = vector_back_ptr_or_null(current_pool->queued_work_vec);
         if (work)
         {
-            vector_pop(queued_work_vec);
+            vector_pop(current_pool->queued_work_vec);
         }
 
-        pthread_mutex_unlock(&queued_work_vec_lock);
+        pthread_mutex_unlock(&current_pool->queued_work_vec_lock);
 
         if (work)
         {
@@ -36,32 +35,73 @@ void *giveme_thread(void *arg)
     }
 }
 
-void giveme_queue_work(QUEUED_WORK_FUNCTION function, void *private)
+void giveme_queue_work_for_pool(struct thread_pool *pool, QUEUED_WORK_FUNCTION function, void *private)
 {
-    struct queued_work* work = calloc(1, sizeof(struct queued_work));
+    struct queued_work *work = calloc(1, sizeof(struct queued_work));
     work->function = function;
     work->private = private;
-    pthread_mutex_lock(&queued_work_vec_lock);
-    vector_push(queued_work_vec, &work);
-    pthread_mutex_unlock(&queued_work_vec_lock);
+    pthread_mutex_lock(&pool->queued_work_vec_lock);
+    vector_push(pool->queued_work_vec, &work);
+    pthread_mutex_unlock(&pool->queued_work_vec_lock);
+}
+
+void giveme_queue_work(QUEUED_WORK_FUNCTION function, void *private)
+{
+    giveme_queue_work_for_pool(&main_pool, function, private);
+}
+
+void giveme_thread_pool_start_for_pool(struct thread_pool *pool)
+{
+    for (size_t i = 0; i < pool->t_threads; i++)
+    {
+        pthread_create(&pool->threads[i], NULL, giveme_thread, pool);
+    }
 }
 
 void giveme_thread_pool_start()
 {
-    for (size_t i = 0; i < t_threads; i++)
-    {
-        pthread_create(&threads[i], NULL, giveme_thread, NULL);
-    }
+    giveme_thread_pool_start_for_pool(&main_pool);
 }
-int giveme_thread_pool_init(size_t _t_threads)
-{
-    t_threads = _t_threads;
-    threads = calloc(t_threads, sizeof(pthread_t));
-    queued_work_vec = vector_create(sizeof(struct queued_work *));
 
-    if (pthread_mutex_init(&queued_work_vec_lock, NULL) != 0)
+int giveme_thread_pool_init_for_pool(struct thread_pool *pool, size_t _t_threads)
+{
+    pool->t_threads = _t_threads;
+    pool->threads = calloc(pool->t_threads, sizeof(pthread_t));
+    pool->queued_work_vec = vector_create(sizeof(struct queued_work *));
+
+    if (pthread_mutex_init(&pool->queued_work_vec_lock, NULL) != 0)
     {
         giveme_log("Failed to initialize thread pool lock mutex\n");
-        return 1;
+        return -1;
     }
+
+    return 0;
+}
+struct thread_pool *giveme_thread_pool_create(size_t _t_threads)
+{
+    struct thread_pool *pool = calloc(1, sizeof(struct thread_pool));
+    int res = giveme_thread_pool_init_for_pool(pool, _t_threads);
+    if (res < 0)
+    {
+        return NULL;
+    }
+
+    return pool;
+}
+
+void giveme_thread_pool_join_and_free(struct thread_pool *pool)
+{
+    pthread_mutex_lock(&pool->queued_work_vec_lock);
+    for (int i = 0; i < pool->t_threads; i++)
+    {
+        pthread_join(pool->threads[i], NULL);
+    }
+    pthread_mutex_unlock(&pool->queued_work_vec_lock);
+
+    free(pool);
+}
+
+int giveme_thread_pool_init(size_t _t_threads)
+{
+    return giveme_thread_pool_init_for_pool(&main_pool, _t_threads);
 }
