@@ -123,10 +123,26 @@ struct giveme_dataexchange_tcp_packet
                 char data_hash[SHA256_STRING_LENGTH];
             } package;
 
-            // The chunk index. Offset = index * GIVEME_PACKAGE_BLOCK_SIZE
-            // Chunk size is GIVEME_PACKAGE_BLOCK_SIZE
+            // The chunk index. Offset = index * GIVEME_PACKAGE_CHUNK_SIZE
+            // Chunk size is GIVEME_PACKAGE_CHUNK_SIZE
             off_t index;
         } package_request_chunk;
+
+        /**
+         * @brief Upon receving this packet the following data of size "chunk_size" can be read
+         * from the stream. This data is the chunk data
+         * 
+         */
+        struct giveme_dataexchange_package_send_chunk
+        {
+            struct giveme_dataexchange_package_send_chunk_package
+            {
+                char data_hash[SHA256_STRING_LENGTH];
+            } package;
+
+            off_t index;
+            size_t chunk_size;
+        } package_send_chunk;
     };
 };
 enum
@@ -213,6 +229,81 @@ struct giveme_tcp_packet
     struct signature sig;
 };
 
+enum
+{
+    GIVEME_NETWORK_PACKAGE_DOWNLOAD_COMPLETED,
+    GIVEME_NETWORK_PACKAGE_DOWNLOAD_INCOMPLETE,
+
+    /**
+     * @brief No chunks available means all threads are currently downloading
+     * all available chunks, therefore nothing pending for download.
+     */
+    GIVEME_NETWORK_PACKAGE_DOWNLOAD_NO_CHUNKS_AVAILABLE
+};
+
+enum
+{
+    GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOADED,
+    GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_NOT_DOWNLOADED,
+    GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOAD_IN_PROGRESS
+};
+
+
+typedef int CHUNK_MAP_ENTRY;
+
+struct network_package_download
+{
+    struct network_package_download_info
+    {
+        struct network_package_download_connections_info
+        {
+            struct sockaddr_in peers[PACKAGE_MAX_KNOWN_IP_ADDRESSES];
+        } connections;
+
+        struct package* package;
+        struct network_package_download_download_info
+        {
+            struct network_package_download_chunks_info
+            {
+                // The total chunks we have downloaded already, once its equal to total_chunks
+                // the file has been downloaded
+                size_t downloaded;
+
+                // The total block chunks in this file. Last chunk does not have to be of required chunk size.
+                size_t total;
+
+                // Chunk map which specifies which chunks have been downloaded and which
+                // have not yet been downloaded.
+                // Total chunks = filesize / GIVEME_PACKAGE_CHUNK_SIZE
+                // CHUNK MAP IS "total" elements in size.
+                // GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOADED is present
+                // for a given index if that particular chunk has been downloaded.
+                CHUNK_MAP_ENTRY *chunk_map;
+
+            } chunks;
+
+            // Memory mapped pointer to the downloaded file. We can change any value
+            // at this address to directly change the file in question.
+            // Memory mapped data is mapped to the tmp_filename
+            void *data;
+
+            // The filename of the memory mapped file. This is a temporary filename
+            // and must be moved when download is finished.
+            char tmp_filename[L_tmpnam];
+            // Temporary opened file to the tmp_filename
+            int tmp_fp;
+
+            pthread_mutex_t mutex;
+
+        } download;
+    } info;
+};
+
+struct network_package_download_uploading_peer
+{
+    char ip_address[GIVEME_IP_STRING_SIZE];
+    struct network_package_download *download;
+};
 /**
  * @brief A single transaction holds a packet and a creation time.
  * These transactions will be added to blocks every five minutes.

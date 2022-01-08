@@ -53,7 +53,7 @@ size_t giveme_packages_total()
     return packages.total;
 }
 
-int giveme_packages_get_by_index(int x, struct package* package_out)
+int giveme_packages_get_by_index(int x, struct package *package_out)
 {
     if (x >= packages.total)
     {
@@ -96,6 +96,93 @@ struct package *giveme_packages_find_free_slot()
     return giveme_packages_find_free_slot();
 }
 
+off_t giveme_package_file_offset_for_chunk(struct package *package, off_t chunk_index)
+{
+    return chunk_index * GIVEME_PACKAGE_CHUNK_SIZE;
+}
+
+size_t giveme_package_get_total_chunks(size_t size)
+{
+    return size / GIVEME_PACKAGE_CHUNK_SIZE;
+}
+
+size_t giveme_package_total_chunks(struct package* package)
+{
+    return giveme_package_get_total_chunks(package->details.size);
+}
+
+const char *giveme_package_get_chunk(struct package *package, off_t chunk_index, size_t *chunk_size_out)
+{
+    if (!giveme_package_has_chunk(package, chunk_index))
+        return NULL;
+
+    int res = 0;
+    char *data = NULL;
+    // We must open the file to read the chunk
+    FILE *fp = fopen(package->details.filehash, "r");
+    if (!fp)
+    {
+        res = -1;
+        goto out;
+    }
+
+    size_t chunk_offset = giveme_package_file_offset_for_chunk(package, chunk_index);
+    if (chunk_offset >= package->details.size)
+    {
+        res = -1;
+        goto out;
+    }
+
+    off_t file_offset = chunk_index * GIVEME_PACKAGE_CHUNK_SIZE;
+    fseek(fp, file_offset, SEEK_SET);
+    data = calloc(1, GIVEME_PACKAGE_CHUNK_SIZE);
+    if (!data)
+    {
+        res = -1;
+        goto out;
+    }
+
+    size_t total_read = fread(data, 1, GIVEME_PACKAGE_CHUNK_SIZE, fp);
+    if (total_read <= 0)
+    {
+        res = -1;
+        goto out;
+    }
+
+    *chunk_size_out = total_read;
+out:
+    if (res < 0)
+    {
+        if (data)
+        {
+            free(data);
+        }
+    }
+    return data;
+}
+
+bool giveme_package_has_chunk(struct package *package, off_t chunk_index)
+{
+    // Not downloaded? then of course we dont have the chunk.
+    if (!package->downloaded.yes)
+    {
+        return false;
+    }
+    size_t size = chunk_index * GIVEME_PACKAGE_CHUNK_SIZE;
+    return (size <= package->details.size);
+}
+
+struct package *giveme_package_get_by_filehash(const char *filehash)
+{
+    for (int i = 0; i < packages.total_possible_packages; i++)
+    {
+        if (memcmp(packages.packages[i].details.filehash, filehash, sizeof(packages.packages[i].details.filehash)) == 0)
+            return &packages.packages[i];
+    }
+
+    return NULL;
+}
+
 struct package *giveme_packages_get_by_transaction_hash(const char *transaction_hash)
 {
     for (int i = 0; i < packages.total_possible_packages; i++)
@@ -106,6 +193,25 @@ struct package *giveme_packages_get_by_transaction_hash(const char *transaction_
 
     return NULL;
 }
+
+int giveme_package_get_ips(struct package *package, char (*addresses)[GIVEME_IP_STRING_SIZE])
+{
+    char blank_ip[GIVEME_IP_STRING_SIZE];
+    bzero(blank_ip, sizeof(blank_ip));
+    int count = 0;
+    for (int i = 0; i < PACKAGE_MAX_KNOWN_IP_ADDRESSES; i++)
+    {
+        if (memcmp(&blank_ip, package->ips.addresses[i], sizeof(blank_ip)) != 0)
+        {
+            // We have an IP address here.
+            strncpy(addresses[count], package->ips.addresses[i], GIVEME_IP_STRING_SIZE);
+            count++;
+        }
+    }
+
+    return count;
+}
+
 int giveme_packages_add_ip_address(struct package *package, const char *ip)
 {
     int res = -1;
@@ -113,10 +219,11 @@ int giveme_packages_add_ip_address(struct package *package, const char *ip)
     bzero(blank_ip, sizeof(blank_ip));
     for (int i = 0; i < PACKAGE_MAX_KNOWN_IP_ADDRESSES; i++)
     {
-        if (memcmp(package->ip_addresses[i], &blank_ip, sizeof(package->ip_addresses[i])) == 0)
+        if (memcmp(package->ips.addresses[i], &blank_ip, sizeof(package->ips.addresses[i])) == 0)
         {
-            strncpy(package->ip_addresses[i], ip, sizeof(package->ip_addresses[i]));
+            strncpy(package->ips.addresses[i], ip, sizeof(package->ips.addresses[i]));
             res = 0;
+            break;
         }
     }
 
@@ -125,8 +232,13 @@ int giveme_packages_add_ip_address(struct package *package, const char *ip)
         // Nothing was found?? Okay lets find a random IP to replace
         // In future could select based on age.. would be better.
         int random_index = rand() % PACKAGE_MAX_KNOWN_IP_ADDRESSES - 1;
-        strncpy(package->ip_addresses[random_index], ip, sizeof(package->ip_addresses[random_index]));
+        strncpy(package->ips.addresses[random_index], ip, sizeof(package->ips.addresses[random_index]));
         res = 0;
+    }
+
+    if (res == 0)
+    {
+        package->ips.total++;
     }
 
     return res;
@@ -240,21 +352,21 @@ char *giveme_packages_path()
     return blockchain_file_path;
 }
 
-const char* giveme_package_storage_directory()
+const char *giveme_package_storage_directory()
 {
     static char tmp_path[PATH_MAX];
     sprintf(tmp_path, "%s/%s", getenv(GIVEME_DATA_BASE_DIRECTORY_ENV), GIVEME_PACKAGE_DIRECTORY);
     return tmp_path;
 }
 
-const char* giveme_package_path(const char* filehash)
+const char *giveme_package_path(const char *filehash)
 {
     static char tmp_path[PATH_MAX];
     sprintf(tmp_path, "%s/%s.zip", giveme_package_storage_directory(), filehash);
     return tmp_path;
 }
 
-bool giveme_package_downloaded(const char* filehash)
+bool giveme_package_downloaded(const char *filehash)
 {
     return file_exists(giveme_package_path(filehash));
 }
@@ -382,7 +494,7 @@ int giveme_package_create(const char *path, const char *package_name)
     packet.data.publish_package.data.size = filesize(dst_path_hashed);
     char tmp_hash[SHA256_STRING_LENGTH];
     sha256_data(&packet.data.publish_package.data, tmp_hash, sizeof(packet.data.publish_package.data));
-    
+
     // We must sign the data
     res = private_sign_key_sig_hash(&packet.data.publish_package.signature, tmp_hash);
     if (res < 0)

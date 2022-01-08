@@ -25,7 +25,7 @@ struct package
 
     // The block hash that proves this package.
     char block_hash[SHA256_STRING_LENGTH];
-    
+
     struct package_downloaded
     {
         // True if we have already downloaded this file
@@ -34,7 +34,11 @@ struct package
     } downloaded;
 
     // The known IP addresses that hold the package data for us to download.
-    char ip_addresses[PACKAGE_MAX_KNOWN_IP_ADDRESSES][GIVEME_IP_STRING_SIZE];
+    struct package_ips
+    {
+        char addresses[PACKAGE_MAX_KNOWN_IP_ADDRESSES][GIVEME_IP_STRING_SIZE];
+        size_t total;
+    } ips;
 };
 
 void giveme_packages_lock();
@@ -75,7 +79,7 @@ int giveme_packages_cache_clear();
  * @param filehash 
  * @return const char* 
  */
-const char* giveme_package_path(const char* filehash);
+const char *giveme_package_path(const char *filehash);
 
 /**
  * @brief Returns true if the package with the given SHA256 filehash has been downloaded on our
@@ -85,7 +89,7 @@ const char* giveme_package_path(const char* filehash);
  * @return true 
  * @return false 
  */
-bool giveme_package_downloaded(const char* filehash);
+bool giveme_package_downloaded(const char *filehash);
 
 /**
  * @brief Returns true if the packages cache file exists.
@@ -94,7 +98,6 @@ bool giveme_package_downloaded(const char* filehash);
  * @return false 
  */
 bool giveme_packages_exists();
-
 
 /**
  * @brief Returns the total packages published on this network
@@ -110,6 +113,64 @@ size_t giveme_packages_total();
  * @param package_out 
  * @return int 0 on success otherwise a negative number
  */
-int giveme_packages_get_by_index(int x, struct package* package_out);
+int giveme_packages_get_by_index(int x, struct package *package_out);
+
+/**
+ * @brief Returns the package reference to the package with the given filehash.
+ * NULL if nothing can be found.
+ * 
+ * @param filehash 
+ * @return struct package* 
+ */
+struct package *giveme_package_get_by_filehash(const char *filehash);
+
+/**
+ * @brief Returns true if the given package has the chunk with the given index available.
+ * 
+ * @param package 
+ * @param chunk_index 
+ * @return true 
+ * @return false 
+ */
+bool giveme_package_has_chunk(struct package *package, off_t chunk_index);
+
+/**
+ * @brief Gets the chunk data from the file, reads no more in size than GIVEME_PACKAGE_CHUNK_SIZE
+ * You are expected to free the returned pointer when your done. Function returns NULL if theirs a problem
+ * @param package 
+ * @param chunk_index 
+ * @param chunk_size_out Pointer to a size_t must be provided. Total bytes read is returned.
+ * @return const char* 
+ * 
+ */
+const char *giveme_package_get_chunk(struct package *package, off_t chunk_index, size_t *chunk_size_out);
+
+/**
+ * @brief Gets the IP addresses in a clean fashion. No NULLs are present in resulting addresses
+ * 
+ * @param package 
+ * @param addresses 
+ * @return int 
+ */
+int giveme_package_get_ips(struct package *package, char (*addresses)[GIVEME_IP_STRING_SIZE]);
+
+
+/**
+ * @brief Returns the total chunks that make up this file data. A chunk is a number of bytes
+ * of data for any given package.
+ * 
+ * @param size 
+ * @return size_t 
+ */
+size_t giveme_package_get_total_chunks(size_t size);
+/**
+ * @brief Returns the total chunks for this package.
+ * 
+ * @param package 
+ * @return size_t 
+ */
+size_t giveme_package_total_chunks(struct package* package);
+
+off_t giveme_package_file_offset_for_chunk(struct package *package, off_t chunk_index);
 
 #endif

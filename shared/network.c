@@ -17,12 +17,17 @@
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <assert.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <stdlib.h>
 
 #include "network.h"
 #include "log.h"
 #include "tpool.h"
 #include "vector.h"
 #include "misc.h"
+#include "package.h"
 #include "blockchain.h"
 
 struct network network;
@@ -205,6 +210,12 @@ int giveme_network_dataexchange_handle_request_block(struct giveme_dataexchange_
     if (!block)
     {
         giveme_log("%s block with index %i not found", __FUNCTION__, packet->request_block.block_index);
+        // We couldn't find the block they asked us for sadly.
+        int res = giveme_network_dataexchange_send_unable_to_help(conn);
+        if (res < 0)
+        {
+            giveme_log("%s unable to send unable to help packet\n", __FUNCTION__);
+        }
         return -1;
     }
 
@@ -229,9 +240,70 @@ out:
     return res;
 }
 
-int giveme_network_dataexchange_handle_package_send_block(struct giveme_dataexchange_tcp_packet *packet, struct network_connection_data *connection)
+int giveme_network_dataexchange_handle_package_request_chunk(struct giveme_dataexchange_tcp_packet *packet, struct network_connection_data *conn)
 {
-    return 0;
+    struct package *package = giveme_package_get_by_filehash(packet->package_request_chunk.package.data_hash);
+    off_t requested_chunk = packet->package_request_chunk.index;
+    if (!package || !giveme_package_has_chunk(package, requested_chunk))
+    {
+        // We couldn't find the package or the chunk they asked for
+        int res = giveme_network_dataexchange_send_unable_to_help(conn);
+        if (res < 0)
+        {
+            giveme_log("%s unable to send unable to help packet\n", __FUNCTION__);
+        }
+        return -1;
+    }
+    int res = 0;
+
+    size_t chunk_size_read = 0;
+    const char *chunk_data = giveme_package_get_chunk(package, requested_chunk, &chunk_size_read);
+    if (!chunk_data)
+    {
+        giveme_network_dataexchange_send_unable_to_help(conn);
+        giveme_log("%s unable to load chunk %i\n", __FUNCTION__, (int)requested_chunk);
+        res = -1;
+        goto out;
+    }
+
+    struct giveme_dataexchange_tcp_packet send_chunk_packet = {};
+    send_chunk_packet.type = GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_SEND_CHUNK;
+    send_chunk_packet.package_send_chunk.index = packet->package_request_chunk.index;
+    send_chunk_packet.package_send_chunk.chunk_size = chunk_size_read;
+    strncpy(send_chunk_packet.package_send_chunk.package.data_hash, packet->package_request_chunk.package.data_hash, sizeof(send_chunk_packet.package_send_chunk.package.data_hash));
+
+    res = giveme_tcp_dataexchange_send_packet(conn->sock, &send_chunk_packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to send GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_SEND_CHUNK packet\n", __FUNCTION__);
+        goto out;
+    }
+
+    // Now lets send the actual block
+    res = giveme_tcp_send_bytes(conn->sock, (void *)chunk_data, chunk_size_read);
+    if (res < 0)
+    {
+        giveme_log("%s failed to send block\n", __FUNCTION__);
+        goto out;
+    }
+
+out:
+    if (chunk_data)
+    {
+        free((void *)chunk_data);
+    }
+    return res;
+}
+
+bool giveme_network_dataexchange_close_on_request(int type)
+{
+    return type != GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_REQUEST_CHUNK;
+}
+
+void giveme_network_dataexchange_connection_close(struct network_connection_data *conn)
+{
+    close(conn->sock);
+    free(conn);
 }
 
 int giveme_network_dataexchange_connection(struct queued_work *work)
@@ -241,27 +313,37 @@ int giveme_network_dataexchange_connection(struct queued_work *work)
 
     // Let's find out what this person wants from us
     struct giveme_dataexchange_tcp_packet packet;
-    giveme_tcp_dataexchange_recv_packet(conn->sock, &packet);
-    switch (packet.type)
+    res = giveme_tcp_dataexchange_recv_packet(conn->sock, &packet);
+    while (res >= 0)
     {
-    case GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_CHAIN_REQUEST:
-        res = giveme_network_dataexchange_handle_chain_request(&packet, conn);
-        break;
+        switch (packet.type)
+        {
+        case GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_CHAIN_REQUEST:
+            res = giveme_network_dataexchange_handle_chain_request(&packet, conn);
+            break;
 
-    case GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_REQUEST_BLOCK:
-        res = giveme_network_dataexchange_handle_request_block(&packet, conn);
-        break;
+        case GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_REQUEST_BLOCK:
+            res = giveme_network_dataexchange_handle_request_block(&packet, conn);
+            break;
 
-    case GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_REQUEST_CHUNK:
-        res = giveme_network_dataexchange_handle_package_send_block(&packet, conn);
-        break;
+        case GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_REQUEST_CHUNK:
+            res = giveme_network_dataexchange_handle_package_request_chunk(&packet, conn);
+            break;
 
-    default:
-        giveme_log("%s unrecognized request for dataexchange, nothing we can do\n", __FUNCTION__);
+        default:
+            giveme_log("%s unrecognized request for dataexchange, nothing we can do\n", __FUNCTION__);
+        }
+
+        // This was an ask and receive terminate type of connection.. so break!
+        if (res < 0 || giveme_network_dataexchange_close_on_request(packet.type))
+        {
+            break;
+        }
+
+        res = giveme_tcp_dataexchange_recv_packet(conn->sock, &packet);
     }
 
-    close(conn->sock);
-    free(conn);
+    giveme_network_dataexchange_connection_close(conn);
 
     return res;
 }
@@ -1197,6 +1279,7 @@ int giveme_network_download_chain(struct in_addr addr, int port, const char *sta
     giveme_log("%s downloaded entire blockchain\n", __FUNCTION__);
 
 out:
+    close(sock);
     return res;
 }
 
@@ -1402,41 +1485,365 @@ void giveme_network_update_chain()
     giveme_network_broadcast(&update_chain_packet);
 }
 
-int giveme_network_request_package_chunk(struct network_connection_data *peer, const char *package_hash, off_t block_id)
+struct network_package_download *giveme_network_new_download_package(struct package *package)
 {
-    int res = 0;
-    giveme_log("%s requesting package with hash %s, block_id=%i, block_size=%i ", __FUNCTION__, package_hash, block_id, GIVEME_PACKAGE_BLOCK_SIZE);
-    int sock = giveme_tcp_network_connect(peer->addr.sin_addr, GIVEME_TCP_DATA_EXCHANGE_PORT, 0);
-    if (sock < 0)
+    struct network_package_download *res = NULL;
+    int tmp_filename_fp = 0;
+    struct network_package_download *download = calloc(1, sizeof(struct network_package_download));
+
+    if (pthread_mutex_init(&download->info.download.mutex, NULL) != 0)
     {
-        giveme_log("%s Failed to connect to peer to download block\n", __FUNCTION__);
+        giveme_log("%s failed to initialize the download mutex\n", __FUNCTION__);
+        goto out_err;
+    }
+
+    download->info.download.chunks.total = giveme_package_total_chunks(package);
+
+    tmpnam(download->info.download.tmp_filename);
+    tmp_filename_fp = open(download->info.download.tmp_filename, O_RDWR | O_CREAT, (mode_t)0600);
+    if (!tmp_filename_fp)
+    {
+        giveme_log("%s failed to create temporary file\n", __FUNCTION__);
+        goto out_err;
+    }
+
+    // Truncate the temporary file so we have enough room for all the chunks we will download
+    if (ftruncate(tmp_filename_fp, package->details.size) < 0)
+    {
+        giveme_log("%s failed to resize temporary file\n", __FUNCTION__);
+        goto out_err;
+    }
+
+    // We must memory map create a file for this package we are downloading.
+    download->info.download.data = mmap(0, package->details.size, PROT_READ | PROT_WRITE, MAP_SHARED, tmp_filename_fp, 0);
+    if (download->info.download.data == MAP_FAILED)
+    {
+        giveme_log("Failed to memory map package temporary file into memory\n", __FUNCTION__);
+        goto out_err;
+    }
+
+    // Setup a chunk map which lets all threads know which parts of the file
+    // have been downloaded already.
+    download->info.download.chunks.chunk_map = calloc(download->info.download.chunks.total, sizeof(CHUNK_MAP_ENTRY));
+    download->info.download.tmp_fp = tmp_filename_fp;
+    res = download;
+
+out_err:
+    if (!res)
+    {
+        if (download)
+        {
+            free(download);
+        }
+
+        if (tmp_filename_fp)
+        {
+            close(tmp_filename_fp);
+        }
+    }
+    return res;
+}
+
+char *giveme_network_download_file_data_ptr(struct network_package_download *download)
+{
+    return download->info.download.data;
+}
+
+struct network_package_download_uploading_peer *giveme_network_download_package_new_peer(const char *ip_address, struct network_package_download *download)
+{
+    struct network_package_download_uploading_peer *uploading_peer = calloc(1, sizeof(struct network_package_download_uploading_peer));
+    strncpy(uploading_peer->ip_address, ip_address, sizeof(uploading_peer->ip_address));
+    uploading_peer->download = download;
+    return uploading_peer;
+}
+
+/**
+ * @brief Finds a chunk that needs to be downloaded from a peer.
+ * 
+ * @param download 
+ * @param chunk_out 
+ * @return int 
+ */
+int giveme_network_download_package_get_required_chunk(struct network_package_download *download, int *chunk_out)
+{
+    for (int i = 0; i < download->info.download.chunks.total; i++)
+    {
+        CHUNK_MAP_ENTRY entry = download->info.download.chunks.chunk_map[i];
+
+        if (entry == GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_NOT_DOWNLOADED)
+        {
+            // We have a chunk available that needs downloading
+            *chunk_out = i;
+            return GIVEME_NETWORK_PACKAGE_DOWNLOAD_INCOMPLETE;
+        }
+    }
+
+    bool is_downloaded = (download->info.download.chunks.downloaded == download->info.download.chunks.total);
+    if (is_downloaded)
+    {
+        return GIVEME_NETWORK_PACKAGE_DOWNLOAD_COMPLETED;
+    }
+
+    return GIVEME_NETWORK_PACKAGE_DOWNLOAD_NO_CHUNKS_AVAILABLE;
+}
+
+void giveme_network_download_package_set_chunk_status(struct network_package_download *download, int chunk, CHUNK_MAP_ENTRY entry)
+{
+    download->info.download.chunks.chunk_map[chunk] = entry;
+}
+
+int giveme_network_download_package_peer_session_download_chunk(struct network_package_download_uploading_peer *peer, int sock)
+{
+    int res = GIVEME_NETWORK_PACKAGE_DOWNLOAD_COMPLETED;
+    CHUNK_MAP_ENTRY new_entry_status = 0;
+    struct network_package_download *download = peer->download;
+    struct package *package = download->info.package;
+    // What chunks are not downloaded yet? Let's find one
+    int required_chunk = 0;
+    
+    pthread_mutex_lock(&download->info.download.mutex);
+    res = giveme_network_download_package_get_required_chunk(download, &required_chunk);
+    if (res == GIVEME_NETWORK_PACKAGE_DOWNLOAD_INCOMPLETE)
+    {
+        giveme_network_download_package_set_chunk_status(download, required_chunk, GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOAD_IN_PROGRESS);
+    }
+    pthread_mutex_unlock(&download->info.download.mutex);
+
+    if (res < 0)
+    {
+        giveme_log("%s an error occured..\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+    else if (res == GIVEME_NETWORK_PACKAGE_DOWNLOAD_COMPLETED)
+    {
+        giveme_log("%s the download has completed, we have no more chunks to ask for all threads succeeded in downloading the package from severla peers\n", __FUNCTION__);
+        goto out;
+    }
+    else if (res == GIVEME_NETWORK_PACKAGE_DOWNLOAD_NO_CHUNKS_AVAILABLE)
+    {
+        giveme_log("%s there are no chunks available for download as all threads are downloading the last chunks we know of\n", __FUNCTION__);
+        goto out;
+    }
+
+    // We have a required chunk that needs downloading, lets ask for it.
+    struct giveme_dataexchange_tcp_packet packet = {};
+    packet.type = GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_REQUEST_CHUNK;
+    packet.package_request_chunk.index = required_chunk;
+    strncpy(packet.package_request_chunk.package.data_hash, package->details.filehash, sizeof(packet.package_request_chunk.package.data_hash));
+    res = giveme_tcp_dataexchange_send_packet(sock, &packet);
+    if (res < 0)
+    {
+        giveme_log("%s we failed to send the request chunk packet to the peer.\n", __FUNCTION__);
+        goto out;
+    }
+
+    res = giveme_tcp_dataexchange_recv_packet(sock, &packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to receive response packet from peer\n", __FUNCTION__);
+        goto out;
+    }
+
+    // Can the peer help us?
+    if (packet.type == GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_UNABLE_TO_HELP)
+    {
+        giveme_log("%s the peer is unable to help us with this chunk for some reason..\n", __FUNCTION__);
         res = -1;
         goto out;
     }
 
-    giveme_log("%s connected, requesting package chunk\n", __FUNCTION__);
-    // First thing we do is send a request for a chain
-    struct giveme_dataexchange_tcp_packet packet = {};
-    packet.type = GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_REQUEST_CHUNK;
-    packet.package_request_chunk.index = block_id;
-    strncpy(packet.package_request_chunk.package.data_hash, package_hash, sizeof(packet.package_request_chunk.package.data_hash));
-    res = giveme_tcp_dataexchange_send_packet(sock, &packet);
-    if (res < 0)
+    if (packet.type != GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_SEND_CHUNK)
     {
-        giveme_log("%s failed to send data exchange packet\n", __FUNCTION__);
+        giveme_log("%s the peer responded in an unexpected way, they sent a packet of type %i\n", __FUNCTION__, packet.type);
+        res = -1;
         goto out;
     }
 
-    // Now we expect a resposne
-    res = giveme_tcp_dataexchange_recv_packet(sock, &packet);
+    // We have a chunk packet response.
+    if (packet.package_send_chunk.index != required_chunk)
+    {
+        giveme_log("%s peer responded with a chunk we did not ask for\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    if (strncmp(packet.package_send_chunk.package.data_hash, package->details.filehash, sizeof(packet.package_send_chunk.package.data_hash)) != 0)
+    {
+        giveme_log("%s peer responded with a chunk from a package we are not asking for\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    // We are in agreement of the chunk to be sent, lets download the data directly into
+    // the package in question.
+    off_t offset = giveme_package_file_offset_for_chunk(package, required_chunk);
+    size_t total_bytes = packet.package_send_chunk.chunk_size;
+    char *data = giveme_network_download_file_data_ptr(download);
+
+    // Will we be in bounds?
+    if (package->details.size < offset + total_bytes)
+    {
+        // We aren't in bounds, this could be an attacker.
+        giveme_log("%s peer attempted an out of bounds attack which was caught\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    // Okay it is safe for us to read the data into the buffer lets do it.
+    res = giveme_tcp_recv_bytes(sock, data, total_bytes);
     if (res < 0)
     {
-        giveme_log("%s failed to receive resposne from data exchange server\n", __FUNCTION__);
+        giveme_log("%s failed to read the chunk bytes from the peer\n", __FUNCTION__);
+        res = -1;
         goto out;
     }
 out:
+    new_entry_status = GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOADED;
+    if (res < 0)
+    {
+        // We failed?? Then the new status must be a not downloaded status
+        // so another thread can pick up the slack.
+        new_entry_status = GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_NOT_DOWNLOADED;
+    }
+    pthread_mutex_lock(&download->info.download.mutex);
+    giveme_network_download_package_set_chunk_status(download, required_chunk, new_entry_status);
+    if (new_entry_status == GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOADED)
+    {
+        download->info.download.chunks.downloaded++;
+    }
+    pthread_mutex_unlock(&download->info.download.mutex);
     return res;
 }
+int giveme_network_download_package_peer_session_download_chunks(struct network_package_download_uploading_peer *peer, int sock)
+{
+    int res = 0;
+    // Keep downloading until the file is done.
+    while (res > 0 && res != GIVEME_NETWORK_PACKAGE_DOWNLOAD_COMPLETED)
+    {
+        res = giveme_network_download_package_peer_session_download_chunk(peer, sock);
+    }
+    return res;
+}
+
+int giveme_network_download_package_peer_session(struct queued_work *work)
+{
+    int res = 0;
+    struct network_package_download_uploading_peer *peer = work->private;
+
+    struct in_addr peer_addr;
+    if (inet_aton(peer->ip_address, &peer_addr) == 0)
+    {
+        giveme_log("%s failed to convert string IP address into numerical\n", __FUNCTION__);
+        goto out;
+    }
+
+    /**
+     * @brief We will try up to five times to connect to the peer and download the blocks
+     * after five tries we will give up.
+     * 
+     */
+    int tries = 0;
+    do
+    {
+        // We need to connect to the peer and hopefully we are successful.
+        int sock = giveme_tcp_network_connect(peer_addr, GIVEME_TCP_DATA_EXCHANGE_PORT, 0);
+        if (sock < 0)
+        {
+            giveme_log("%s Failed to connect to peer who holds the package we want. Hopefully another peer will be available\n", __FUNCTION__);
+            res = -1;
+            goto out;
+        }
+
+        // We are connected to this peer.. Alright lets ask for the chunks of the file.
+        // several threads will ask several peers until the file is downloaded entirely.
+
+        res = giveme_network_download_package_peer_session_download_chunks(peer, sock);
+        tries++;
+    } while (res < 0 && tries <= 2);
+out:
+    return res;
+}
+int giveme_network_download_package(const char *package_filehash)
+{
+    // We must download the different chunks from several peers for efficiency.
+    struct package *package = giveme_package_get_by_filehash(package_filehash);
+    if (!package)
+    {
+        // Theres no mention of the package on the chain cache..
+        // Package does not exist or is unknown to us
+        return -1;
+    }
+
+    // Let's go through all the peers to download chunks from
+    char addresses[PACKAGE_MAX_KNOWN_IP_ADDRESSES][GIVEME_IP_STRING_SIZE];
+    int res = giveme_package_get_ips(package, addresses);
+    if (res <= 0)
+    {
+        giveme_log("%s no available IP addresses found for the package or their was an error\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    int total_ips = res;
+
+    // We have all the peers who have this package, now we need to create a new download
+    struct network_package_download *download = giveme_network_new_download_package(package);
+    if (!download)
+    {
+        giveme_log("%s issue creating a new download, nothing we can do right now\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    struct thread_pool *pool = giveme_thread_pool_create(GIVEME_PACKAGE_DOWNLOAD_TOTAL_THREADS);
+    if (!pool)
+    {
+        giveme_log("%s failed to create a thread pool for the package download\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    // We now need to start several threads which will connect to every peer here
+    // and download the required chunks.
+    for (int i = 0; i < total_ips; i++)
+    {
+        struct network_package_download_uploading_peer *peer = giveme_network_download_package_new_peer(addresses[i], download);
+        giveme_queue_work_for_pool(pool, giveme_network_download_package_peer_session, peer);
+        giveme_log("%s queued connection for peer %s will attempt to connect and download chunks of package\n", __FUNCTION__, addresses[i]);
+    }
+
+    giveme_log("%s starting pool jobs to download the package\n", __FUNCTION__);
+    giveme_thread_pool_start_for_pool(pool);
+    giveme_log("%s waiting for download to finish\n", __FUNCTION__);
+    giveme_thread_pool_join_and_free(pool);
+    giveme_log("%s all threads completed, download done.\n", __FUNCTION__);
+
+    // Let's now see if we was successful in downloading the file.
+    if (download->info.download.chunks.total != download->info.download.chunks.downloaded)
+    {
+        giveme_log("%s not all chunks were sent to us.. data error download unexpectedly failed\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    // Chunks match downloaded? Let's ensure the integrity of the data sent to us.
+    char tmp_hash[SHA256_STRING_LENGTH];
+    sha256_file(download->info.download.tmp_filename, tmp_hash);
+    if (strncmp(tmp_hash, package->details.filehash, sizeof(tmp_hash)) != 0)
+    {
+        giveme_log("%s the hash of the file we downloaded does not match the package hash, a peer lied to us when sending us a chunk\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+
+    giveme_log("%s the file was downloaded successfully into temporary file %s\n", __FUNCTION__, download->info.download.tmp_filename);
+
+out:
+    return res;
+}
+
 int giveme_network_update_chain_for_block_from_peer(struct network_connection_data *peer, int block_index)
 {
     int res = 0;
