@@ -248,9 +248,21 @@ enum
     GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOAD_IN_PROGRESS
 };
 
-
 typedef int CHUNK_MAP_ENTRY;
 
+struct network_package_summary_download_info
+{
+    char datahash[SHA256_STRING_LENGTH];
+
+    // The total chunks we have downloaded already, once its equal to total_chunks
+    // the file has been downloaded
+    size_t downloaded_chunks;
+
+    // The total block chunks in this file. Last chunk does not have to be of required chunk size.
+    size_t total_chunks;
+
+    int percentage;
+};
 struct network_package_download
 {
     struct network_package_download_info
@@ -260,7 +272,7 @@ struct network_package_download
             struct sockaddr_in peers[PACKAGE_MAX_KNOWN_IP_ADDRESSES];
         } connections;
 
-        struct package* package;
+        struct package *package;
         struct network_package_download_download_info
         {
             struct network_package_download_chunks_info
@@ -365,6 +377,10 @@ struct network
         // last block
         atomic_long last_known_hashes_update;
     } blockchain;
+
+    // Vector of struct network_package_download*
+    struct vector *downloads;
+    pthread_mutex_t downloads_lock;
 };
 
 void giveme_network_initialize();
@@ -373,5 +389,15 @@ int giveme_network_connection_thread_start();
 int giveme_network_process_thread_start();
 void giveme_network_broadcast(struct giveme_tcp_packet *packet);
 void giveme_network_update_chain();
+
+int giveme_network_download_package(const char *package_filehash);
+
+/**
+ * @brief Returns download information for a current active download
+ * 
+ * @param download 
+ * @return struct network_package_summary_download_info 
+ */
+struct network_package_summary_download_info giveme_network_download_info(struct network_package_download* download);
 
 #endif

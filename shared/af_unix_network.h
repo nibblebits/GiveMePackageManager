@@ -21,7 +21,11 @@ enum
     NETWORK_AF_UNIX_PACKET_TYPE_MY_INFO,
     NETWORK_AF_UNIX_PACKET_TYPE_INFO_RESPONSE,
     NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES,
-    NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES_RESPONSE
+    NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES_RESPONSE,
+    NETWORK_AF_UNIX_PACKET_TYPE_PACKAGE_DOWNLOAD,
+    NETWORK_AF_UNIX_PACKET_TYPE_PACKAGE_DOWNLOAD_RESPONSE,
+    NETWORK_AF_UNIX_PACKET_TYPE_NOT_FOUND,
+    NETWORK_AF_UNIX_PACKET_TYPE_PROBLEM
 };
 
 enum
@@ -84,15 +88,28 @@ struct network_af_unix_packet
                 struct package packages[PACKAGE_MAX_PER_PAGE];
             } packages;
         } packages_response;
+
+        struct network_af_unix_package_download
+        {
+            char package_name[GIVEME_PACKAGE_NAME_MAX];
+        } package_download;
+
+        struct network_af_unix_package_download_response
+        {
+            // Numerical ID of this download can be used to check the status
+            char package_name[GIVEME_PACKAGE_NAME_MAX];
+            char filehash[SHA256_STRING_LENGTH];
+            size_t size;
+        } package_download_response;
     };
 
     char message[FRIENDLY_MESSAGE_MAX];
 };
 int giveme_af_unix_connect();
 int giveme_af_unix_listen();
-int giveme_download(int sfd, const char *package_name);
+int giveme_download(int sfd, const char *package_name, struct network_af_unix_packet *packet_out);
 int giveme_publish(int sfd, const char *path_name, const char *package_name);
-int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_packages* packages_res_out);
+int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_packages *packages_res_out);
 
 int giveme_signup(int sfd, const char *name);
 int giveme_make_fake_blockchain(int sfd, size_t total_blocks);

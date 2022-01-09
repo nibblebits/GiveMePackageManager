@@ -125,6 +125,13 @@ int giveme_packages_get_by_index(int x, struct package *package_out);
 struct package *giveme_package_get_by_filehash(const char *filehash);
 
 /**
+ * @brief Returns the package with the given name
+ * 
+ * @param name 
+ * @return struct package* 
+ */
+struct package* giveme_package_get_by_name(const char* name);
+/**
  * @brief Returns true if the given package has the chunk with the given index available.
  * 
  * @param package 

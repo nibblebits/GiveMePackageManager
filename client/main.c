@@ -28,6 +28,33 @@ void packages_print(struct package *packages, size_t total)
 		printf("%s : %s : %s : Size=%lld\n", packages[i].details.name, packages[i].details.description, packages[i].details.filehash, (long long int)packages[i].details.size);
 	}
 }
+
+int download_package(int argc, char* argv[])
+{
+	if (argc < GIVEME_REQUIRED_DOWNLOAD_ARGC)
+	{
+		printf("Expecting giveme download package_name\n");
+		return -1;
+	}
+
+	int sock = giveme_af_unix_connect();
+	struct network_af_unix_packet packet;
+	if (giveme_download(sock, argv[1], &packet) < 0)
+	{
+		printf("Issue communicating with socket to preform a download\n");
+		return -1;
+	}
+
+	if (packet.type == NETWORK_AF_UNIX_PACKET_TYPE_NOT_FOUND)
+	{
+		printf("The package with the given name %s could not be located\n", argv[1]);
+		return -1;
+	}
+
+	printf("The package %s has been downloaded\n", argv[1]);
+	return 0;
+}
+
 int packages(int argc, char *argv[])
 {
 	if (argc < GIVEME_REQUIRED_PACKAGES_ARGC)
@@ -141,6 +168,10 @@ int main(int argc, char *argv[])
 	else if (S_EQ(argv[1], "packages"))
 	{
 		return packages(argc, argv);
+	}
+	else if(S_EQ(argv[1], "download"))
+	{
+		return download_package(argc, argv);
 	}
 
 	return 0;

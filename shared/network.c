@@ -1485,7 +1485,7 @@ void giveme_network_update_chain()
     giveme_network_broadcast(&update_chain_packet);
 }
 
-struct network_package_download *giveme_network_new_download_package(struct package *package)
+struct network_package_download *giveme_network_new_package_download(struct package *package)
 {
     struct network_package_download *res = NULL;
     int tmp_filename_fp = 0;
@@ -1544,6 +1544,14 @@ out_err:
     return res;
 }
 
+void giveme_network_free_package_download(struct network_package_download *download)
+{
+    close(download->info.download.tmp_fp);
+    munmap(download->info.download.data, download->info.package->details.size);
+    free(download->info.download.chunks.chunk_map);
+    free(download);
+}
+
 char *giveme_network_download_file_data_ptr(struct network_package_download *download)
 {
     return download->info.download.data;
@@ -1600,7 +1608,7 @@ int giveme_network_download_package_peer_session_download_chunk(struct network_p
     struct package *package = download->info.package;
     // What chunks are not downloaded yet? Let's find one
     int required_chunk = 0;
-    
+
     pthread_mutex_lock(&download->info.download.mutex);
     res = giveme_network_download_package_get_required_chunk(download, &required_chunk);
     if (res == GIVEME_NETWORK_PACKAGE_DOWNLOAD_INCOMPLETE)
@@ -1764,8 +1772,29 @@ int giveme_network_download_package_peer_session(struct queued_work *work)
 out:
     return res;
 }
+
+void giveme_network_downloads_push(struct network_package_download *download)
+{
+    vector_push(network.downloads, &download);
+}
+
+void giveme_network_downloads_remove(struct network_package_download *download)
+{
+    vector_pop_value(network.downloads, download);
+}
+struct network_package_summary_download_info giveme_network_download_info(struct network_package_download* download)
+{
+    struct network_package_summary_download_info info = {};
+    strncpy(info.datahash, download->info.package->details.filehash, sizeof(info.datahash));
+    info.downloaded_chunks = download->info.download.chunks.downloaded;
+    info.total_chunks = download->info.download.chunks.total;
+    info.percentage = 100 * info.downloaded_chunks / info.total_chunks;
+    return info;
+}
+
 int giveme_network_download_package(const char *package_filehash)
 {
+    struct network_package_download *download = NULL;
     // We must download the different chunks from several peers for efficiency.
     struct package *package = giveme_package_get_by_filehash(package_filehash);
     if (!package)
@@ -1788,13 +1817,17 @@ int giveme_network_download_package(const char *package_filehash)
     int total_ips = res;
 
     // We have all the peers who have this package, now we need to create a new download
-    struct network_package_download *download = giveme_network_new_download_package(package);
+    download = giveme_network_new_package_download(package);
     if (!download)
     {
         giveme_log("%s issue creating a new download, nothing we can do right now\n", __FUNCTION__);
         res = -1;
         goto out;
     }
+
+    pthread_mutex_lock(&network.downloads_lock);
+    giveme_network_downloads_push(download);
+    pthread_mutex_unlock(&network.downloads_lock);
 
     struct thread_pool *pool = giveme_thread_pool_create(GIVEME_PACKAGE_DOWNLOAD_TOTAL_THREADS);
     if (!pool)
@@ -1837,10 +1870,16 @@ int giveme_network_download_package(const char *package_filehash)
         goto out;
     }
 
-
     giveme_log("%s the file was downloaded successfully into temporary file %s\n", __FUNCTION__, download->info.download.tmp_filename);
 
 out:
+    if (download)
+    {
+        pthread_mutex_lock(&network.downloads_lock);
+        giveme_network_downloads_remove(download);
+        pthread_mutex_unlock(&network.downloads_lock);
+        giveme_network_free_package_download(download);
+    }
     return res;
 }
 
@@ -2137,7 +2176,15 @@ void giveme_network_initialize()
         goto out;
     }
 
+    if (pthread_mutex_init(&network.downloads_lock, NULL) != 0)
+    {
+        giveme_log("Failed to initialize downloads mutex\n");
+        res = -1;
+        goto out;
+    }
+
     network.hashes.hashes = vector_create(sizeof(struct network_last_hash *));
+    network.downloads = vector_create(sizeof(struct network_package_download *));
 
     if (pthread_mutex_init(&network.transactions.lock, NULL) != 0)
     {

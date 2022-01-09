@@ -172,6 +172,17 @@ bool giveme_package_has_chunk(struct package *package, off_t chunk_index)
     return (size <= package->details.size);
 }
 
+struct package* giveme_package_get_by_name(const char* name)
+{
+    for (int i = 0; i < packages.total_possible_packages; i++)
+    {
+        if (memcmp(packages.packages[i].details.name, name, sizeof(packages.packages[i].details.name)) == 0)
+            return &packages.packages[i];
+    }
+
+    return NULL;
+}
+
 struct package *giveme_package_get_by_filehash(const char *filehash)
 {
     for (int i = 0; i < packages.total_possible_packages; i++)

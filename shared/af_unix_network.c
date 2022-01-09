@@ -132,7 +132,7 @@ struct blockchain_individual giveme_info(int sfd)
     return res_packet.info_response.individual;
 }
 
-int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_packages* packages_res_out)
+int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_packages *packages_res_out)
 {
     static struct network_af_unix_packet packet;
     bzero(&packet, sizeof(packet));
@@ -157,8 +157,28 @@ int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_
     return 0;
 }
 
-int giveme_download(int sfd, const char *package_name)
+int giveme_download(int sfd, const char *package_name, struct network_af_unix_packet *packet_out)
 {
+    static struct network_af_unix_packet packet;
+    bzero(&packet, sizeof(packet));
+    packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGE_DOWNLOAD;
+    strncpy(packet.package_download.package_name, package_name, sizeof(packet.package_download.package_name));
+
+    // Send the packet
+    if (giveme_af_unix_write(sfd, &packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
+    {
+        printf("Failed to send packet to server\n");
+        return -1;
+    }
+
+    static struct network_af_unix_packet res_packet;
+    if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
+    {
+        printf("Failed to receive response packet from server\n");
+        return -1;
+    }
+
+    return 0;
 }
 
 int giveme_make_fake_blockchain(int sfd, size_t total_blocks)
@@ -280,9 +300,36 @@ int giveme_network_af_unix_handle_packet_my_info(int sock, struct network_af_uni
     return 0;
 }
 
+int giveme_netwrok_af_unix_handle_packet_package_download(int sock, struct network_af_unix_packet *packet)
+{
+    struct network_af_unix_packet res_packet = {};
+
+    // Do we have the package the user is asking for?
+    struct package *package = giveme_package_get_by_name(packet->package_download.package_name);
+    if (!package)
+    {
+        res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_NOT_FOUND;
+        giveme_af_unix_write(sock, &res_packet);
+        return 0;
+    }
+    int res = giveme_network_download_package(package->details.filehash);
+    if (res < 0)
+    {
+        res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PROBLEM;
+        giveme_af_unix_write(sock, &res_packet);
+        return 0;
+    }
+    res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGE_DOWNLOAD_RESPONSE;
+    strncpy(res_packet.package_download_response.filehash, package->details.filehash, sizeof(res_packet.package_download_response.filehash));
+    strncpy(res_packet.package_download_response.package_name, package->details.name, sizeof(res_packet.package_download_response.package_name));
+    res_packet.package_download_response.size = package->details.size;
+    giveme_af_unix_write(sock, &res_packet);
+    return 0;
+}
+
 int giveme_network_af_unix_handle_packet_packages(int sock, struct network_af_unix_packet *packet)
 {
-    static struct network_af_unix_packet res_packet = {};    
+    static struct network_af_unix_packet res_packet = {};
     bzero(&res_packet, sizeof(res_packet));
     res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES_RESPONSE;
     int page = packet->packages.page;
@@ -329,6 +376,9 @@ int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet
 
     case NETWORK_AF_UNIX_PACKET_TYPE_MY_INFO:
         res = giveme_network_af_unix_handle_packet_my_info(sock, packet);
+        break;
+    case NETWORK_AF_UNIX_PACKET_TYPE_PACKAGE_DOWNLOAD:
+        res = giveme_netwrok_af_unix_handle_packet_package_download(sock, packet);
         break;
     }
     return res;
