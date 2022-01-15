@@ -1059,7 +1059,12 @@ void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *pack
         return;
     }
 
-    if (memcmp(packet->data.publish_package.ip_address, 0, sizeof(packet->data.publish_package.ip_address)) == 0)
+    // We got a blank IP? Then this is not from a relay
+    // we should set the IP to the IP address who connected to us.
+    // This will be the IP address of the peer who holds the package data that can 
+    // be downloaded a later date.. All downlaoders will also become peers  or seeds
+    // of the file data.
+    if (!packet->data.publish_package.ip_address[0])
     {
         // No IP address was provided therefore we must set it.
         strncpy(packet->data.publish_package.ip_address, giveme_connection_ip(connection), sizeof(packet->data.publish_package.ip_address));
