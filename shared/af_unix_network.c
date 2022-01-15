@@ -163,7 +163,6 @@ int giveme_download(int sfd, const char *package_name, struct network_af_unix_pa
     bzero(&packet, sizeof(packet));
     packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGE_DOWNLOAD;
     strncpy(packet.package_download.package_name, package_name, sizeof(packet.package_download.package_name));
-
     // Send the packet
     if (giveme_af_unix_write(sfd, &packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
     {
@@ -177,6 +176,7 @@ int giveme_download(int sfd, const char *package_name, struct network_af_unix_pa
         printf("Failed to receive response packet from server\n");
         return -1;
     }
+    *packet_out = res_packet;
 
     return 0;
 }

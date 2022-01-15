@@ -39,7 +39,7 @@ int download_package(int argc, char* argv[])
 
 	int sock = giveme_af_unix_connect();
 	struct network_af_unix_packet packet;
-	if (giveme_download(sock, argv[1], &packet) < 0)
+	if (giveme_download(sock, argv[2], &packet) < 0)
 	{
 		printf("Issue communicating with socket to preform a download\n");
 		return -1;
@@ -48,6 +48,11 @@ int download_package(int argc, char* argv[])
 	if (packet.type == NETWORK_AF_UNIX_PACKET_TYPE_NOT_FOUND)
 	{
 		printf("The package with the given name %s could not be located\n", argv[1]);
+		return -1;
+	}
+	else if (packet.type == NETWORK_AF_UNIX_PACKET_TYPE_PROBLEM)
+	{
+		printf("Theres an issue downloading the package, its possible no active peers with this file data could be found.\n");
 		return -1;
 	}
 
