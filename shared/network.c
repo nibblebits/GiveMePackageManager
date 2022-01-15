@@ -1069,7 +1069,13 @@ void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *pack
         // No IP address was provided therefore we must set it.
         strncpy(packet->data.publish_package.ip_address, giveme_connection_ip(connection), sizeof(packet->data.publish_package.ip_address));
     }
-
+    int res = giveme_network_create_transaction_for_packet(packet);
+    if (res < 0)
+    {
+        giveme_log("%s problem creating transaction for the package creation request\n", __FUNCTION__);
+        return;
+    }
+    
     giveme_log("%s Publish package request for packet %s by %s\n", __FUNCTION__, packet->data.publish_package.data.name, giveme_connection_ip(connection));
 }
 
