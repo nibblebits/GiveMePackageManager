@@ -1075,7 +1075,7 @@ void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *pack
         giveme_log("%s problem creating transaction for the package creation request\n", __FUNCTION__);
         return;
     }
-    
+
     giveme_log("%s Publish package request for packet %s by %s\n", __FUNCTION__, packet->data.publish_package.data.name, giveme_connection_ip(connection));
 }
 
@@ -2206,9 +2206,9 @@ void giveme_network_initialize()
     giveme_network_initialize_connections();
 
     // To give some time for the IP's to be added before we get the most up to date blockchain
-    // We will set the last request time so that it will trigger in 30 seconds
+    // We will set the last request time so that it will trigger in 5 seconds
     network.blockchain.chain_requesting_update = false;
-    network.blockchain.last_chain_update_request = time(NULL) - GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS + 30;
+    network.blockchain.last_chain_update_request = time(NULL) - GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS + 5;
 out:
     if (res < 0)
     {
