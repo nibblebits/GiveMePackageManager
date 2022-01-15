@@ -1404,6 +1404,7 @@ int giveme_network_create_block_transaction_for_network_transaction_new_package(
     char tmp_hash[SHA256_STRING_LENGTH];
     transaction_out->data.type = BLOCK_TRANSACTION_TYPE_NEW_PACKAGE;
     memcpy(&transaction_out->data.publish_package.data, &transaction->packet.data.publish_package.data, sizeof(transaction_out->data.publish_package.data));
+    memcpy(&transaction_out->data.publish_package.ip_address, &transaction->packet.data.publish_package.ip_address, sizeof(transaction_out->data.publish_package.ip_address));
     transaction_out->data.publish_package.signature = transaction->packet.data.publish_package.signature;
 
     sha256_data(&transaction_out->data.publish_package.data, tmp_hash, sizeof(transaction_out->data.publish_package.data));
@@ -1433,7 +1434,7 @@ int giveme_network_create_block_transaction_for_network_transaction(struct netwo
         strncpy(transaction_out->data.publish_public_key.name, transaction->packet.data.publish_public_key.name, sizeof(transaction_out->data.publish_public_key.name));
         memcpy(&transaction_out->data.publish_public_key.pub_key, &transaction->packet.data.publish_public_key.pub_key, sizeof(transaction_out->data.publish_public_key.pub_key));
         break;
-
+    
     default:
         res = -1;
     }
