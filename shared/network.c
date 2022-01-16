@@ -1695,7 +1695,7 @@ int giveme_network_download_package_peer_session_download_chunk(struct network_p
     // the package in question.
     off_t offset = giveme_package_file_offset_for_chunk(package, required_chunk);
     size_t total_bytes = packet.package_send_chunk.chunk_size;
-    char *data = giveme_network_download_file_data_ptr(download);
+    char *data = giveme_network_download_file_data_ptr(download)+offset;
 
     // Will we be in bounds?
     if (package->details.size < offset + total_bytes)

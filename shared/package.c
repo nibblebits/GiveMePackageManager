@@ -108,7 +108,9 @@ size_t giveme_package_get_total_chunks(size_t size)
 
 size_t giveme_package_total_chunks(struct package* package)
 {
-    return giveme_package_get_total_chunks(package->details.size);
+    // Off by one error....
+    // Requires +1 because 0 / chunk_size will be zero.
+    return giveme_package_get_total_chunks(package->details.size)+1;
 }
 
 const char *giveme_package_get_chunk(struct package *package, off_t chunk_index, size_t *chunk_size_out)
