@@ -1836,7 +1836,7 @@ int giveme_network_download_package(const char *package_filehash)
     giveme_network_downloads_push(download);
     pthread_mutex_unlock(&network.downloads_lock);
 
-    struct thread_pool *pool = giveme_thread_pool_create(GIVEME_PACKAGE_DOWNLOAD_TOTAL_THREADS);
+    struct thread_pool *pool = giveme_thread_pool_create(GIVEME_PACKAGE_DOWNLOAD_TOTAL_THREADS, GIVEME_THREAD_POOL_FLAG_END_THREADS_WHEN_NO_JOBS);
     if (!pool)
     {
         giveme_log("%s failed to create a thread pool for the package download\n", __FUNCTION__);

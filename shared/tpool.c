@@ -31,6 +31,11 @@ void *giveme_thread(void *arg)
             // Work is done lets delete the work
             free(work);
         }
+        else if(current_pool->flags & GIVEME_THREAD_POOL_FLAG_END_THREADS_WHEN_NO_JOBS)
+        {
+            // No more jobs? We are done
+            break;
+        }
         sleep(1);
     }
 }
@@ -63,8 +68,9 @@ void giveme_thread_pool_start()
     giveme_thread_pool_start_for_pool(&main_pool);
 }
 
-int giveme_thread_pool_init_for_pool(struct thread_pool *pool, size_t _t_threads)
+int giveme_thread_pool_init_for_pool(struct thread_pool *pool, size_t _t_threads, int flags)
 {
+    pool->flags = flags;
     pool->t_threads = _t_threads;
     pool->threads = calloc(pool->t_threads, sizeof(pthread_t));
     pool->queued_work_vec = vector_create(sizeof(struct queued_work *));
@@ -77,10 +83,10 @@ int giveme_thread_pool_init_for_pool(struct thread_pool *pool, size_t _t_threads
 
     return 0;
 }
-struct thread_pool *giveme_thread_pool_create(size_t _t_threads)
+struct thread_pool *giveme_thread_pool_create(size_t _t_threads, int flags)
 {
     struct thread_pool *pool = calloc(1, sizeof(struct thread_pool));
-    int res = giveme_thread_pool_init_for_pool(pool, _t_threads);
+    int res = giveme_thread_pool_init_for_pool(pool, _t_threads, flags);
     if (res < 0)
     {
         return NULL;
@@ -103,5 +109,5 @@ void giveme_thread_pool_join_and_free(struct thread_pool *pool)
 
 int giveme_thread_pool_init(size_t _t_threads)
 {
-    return giveme_thread_pool_init_for_pool(&main_pool, _t_threads);
+    return giveme_thread_pool_init_for_pool(&main_pool, _t_threads, 0);
 }
