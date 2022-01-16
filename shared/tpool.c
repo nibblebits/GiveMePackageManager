@@ -97,13 +97,10 @@ struct thread_pool *giveme_thread_pool_create(size_t _t_threads, int flags)
 
 void giveme_thread_pool_join_and_free(struct thread_pool *pool)
 {
-    pthread_mutex_lock(&pool->queued_work_vec_lock);
     for (int i = 0; i < pool->t_threads; i++)
     {
         pthread_join(pool->threads[i], NULL);
     }
-    pthread_mutex_unlock(&pool->queued_work_vec_lock);
-
     free(pool);
 }
 

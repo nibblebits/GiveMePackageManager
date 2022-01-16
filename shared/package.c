@@ -119,7 +119,7 @@ const char *giveme_package_get_chunk(struct package *package, off_t chunk_index,
     int res = 0;
     char *data = NULL;
     // We must open the file to read the chunk
-    FILE *fp = fopen(package->details.filehash, "r");
+    FILE *fp = fopen(giveme_package_path(package->details.filehash), "r");
     if (!fp)
     {
         res = -1;

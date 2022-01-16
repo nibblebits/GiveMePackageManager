@@ -1504,6 +1504,7 @@ struct network_package_download *giveme_network_new_package_download(struct pack
         goto out_err;
     }
 
+    download->info.package = package;
     download->info.download.chunks.total = giveme_package_total_chunks(package);
 
     tmpnam(download->info.download.tmp_filename);
@@ -1633,7 +1634,7 @@ int giveme_network_download_package_peer_session_download_chunk(struct network_p
     else if (res == GIVEME_NETWORK_PACKAGE_DOWNLOAD_COMPLETED)
     {
         giveme_log("%s the download has completed, we have no more chunks to ask for all threads succeeded in downloading the package from severla peers\n", __FUNCTION__);
-        goto out;
+        goto out_completed;
     }
     else if (res == GIVEME_NETWORK_PACKAGE_DOWNLOAD_NO_CHUNKS_AVAILABLE)
     {
@@ -1728,11 +1729,13 @@ out:
         download->info.download.chunks.downloaded++;
     }
     pthread_mutex_unlock(&download->info.download.mutex);
+
+out_completed:
     return res;
 }
 int giveme_network_download_package_peer_session_download_chunks(struct network_package_download_uploading_peer *peer, int sock)
 {
-    int res = 0;
+    int res = 1;
     // Keep downloading until the file is done.
     while (res > 0 && res != GIVEME_NETWORK_PACKAGE_DOWNLOAD_COMPLETED)
     {
