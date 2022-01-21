@@ -1497,6 +1497,13 @@ struct network_package_download *giveme_network_new_package_download(struct pack
     struct network_package_download *res = NULL;
     int tmp_filename_fp = 0;
     struct network_package_download *download = calloc(1, sizeof(struct network_package_download));
+    download->info.connections.peers = vector_create(sizeof(struct network_package_download_uploading_peer));
+
+    if (pthread_mutex_init(&download->info.connections.mutex, NULL) != 0)
+    {
+        giveme_log("%s failed to initialize the connections mutex\n", __FUNCTION__);
+        goto out_err;
+    }
 
     if (pthread_mutex_init(&download->info.download.mutex, NULL) != 0)
     {
@@ -1534,6 +1541,7 @@ struct network_package_download *giveme_network_new_package_download(struct pack
     // have been downloaded already.
     download->info.download.chunks.chunk_map = calloc(download->info.download.chunks.total, sizeof(CHUNK_MAP_ENTRY));
     download->info.download.tmp_fp = tmp_filename_fp;
+    
     res = download;
 
 out_err:
@@ -1542,7 +1550,9 @@ out_err:
         if (download)
         {
             free(download);
+            vector_free(download->info.connections.peers);
         }
+        
 
         if (tmp_filename_fp)
         {
@@ -1552,12 +1562,31 @@ out_err:
     return res;
 }
 
+void giveme_network_download_package_free_peer(struct network_package_download_uploading_peer* peer)
+{
+    free(peer);
+}
+
+size_t giveme_network_download_package_peer_count(struct network_package_download* download)
+{
+    return vector_count(download->info.connections.peers);
+}
+
 void giveme_network_free_package_download(struct network_package_download *download)
 {
     close(download->info.download.tmp_fp);
     munmap(download->info.download.data, download->info.package->details.size);
     free(download->info.download.chunks.chunk_map);
+
+    struct network_package_download_uploading_peer* peer = vector_back_ptr_or_null(download->info.connections.peers);
+    while(peer)
+    {
+        giveme_network_download_package_free_peer(peer);
+        peer = vector_back_ptr_or_null(download->info.connections.peers);
+    }
+    vector_free(download->info.connections.peers);
     free(download);
+    
 }
 
 char *giveme_network_download_file_data_ptr(struct network_package_download *download)
@@ -1730,6 +1759,14 @@ out:
     }
     pthread_mutex_unlock(&download->info.download.mutex);
 
+    if (new_entry_status == GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOADED)
+    {
+        pthread_mutex_lock(&download->info.connections.mutex);
+        peer->chunks_uploaded++;
+        pthread_mutex_unlock(&download->info.connections.mutex);
+    }
+    
+
 out_completed:
     return res;
 }
@@ -1777,6 +1814,7 @@ int giveme_network_download_package_peer_session(struct queued_work *work)
         // several threads will ask several peers until the file is downloaded entirely.
 
         res = giveme_network_download_package_peer_session_download_chunks(peer, sock);
+        close(sock);
         tries++;
     } while (res < 0 && tries <= 2);
 out:
@@ -1802,7 +1840,12 @@ struct network_package_summary_download_info giveme_network_download_info(struct
     return info;
 }
 
-int giveme_network_download_package(const char *package_filehash)
+void giveme_network_download_add_peer(struct network_package_download* download, struct network_package_download_uploading_peer* peer)
+{
+    vector_push(download->info.connections.peers, &peer);
+}
+
+int giveme_network_download_package(const char *package_filehash, char* filename_out, size_t filename_size)
 {
     struct network_package_download *download = NULL;
     // We must download the different chunks from several peers for efficiency.
@@ -1854,6 +1897,7 @@ int giveme_network_download_package(const char *package_filehash)
         struct network_package_download_uploading_peer *peer = giveme_network_download_package_new_peer(addresses[i], download);
         giveme_queue_work_for_pool(pool, giveme_network_download_package_peer_session, peer);
         giveme_log("%s queued connection for peer %s will attempt to connect and download chunks of package\n", __FUNCTION__, addresses[i]);
+
     }
 
     giveme_log("%s starting pool jobs to download the package\n", __FUNCTION__);
@@ -1881,7 +1925,14 @@ int giveme_network_download_package(const char *package_filehash)
     }
 
     giveme_log("%s the file was downloaded successfully into temporary file %s\n", __FUNCTION__, download->info.download.tmp_filename);
-
+    giveme_log("%s moving to package directory\n", __FUNCTION__);
+    
+    char package_path[PATH_MAX];
+    strncpy(package_path, giveme_package_path(package->details.filehash), sizeof(package_path));
+    rename(download->info.download.tmp_filename, package_path);
+    strncpy(filename_out, package_path, filename_size);
+    strncpy(package->downloaded.filepath, package_path, sizeof(package->downloaded.filepath));
+    package->downloaded.yes = true;
 out:
     if (download)
     {

@@ -99,6 +99,7 @@ struct network_af_unix_packet
             // Numerical ID of this download can be used to check the status
             char package_name[GIVEME_PACKAGE_NAME_MAX];
             char filehash[SHA256_STRING_LENGTH];
+            char path[PATH_MAX];
             size_t size;
         } package_download_response;
     };

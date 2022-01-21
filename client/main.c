@@ -57,6 +57,12 @@ int download_package(int argc, char* argv[])
 	}
 
 	printf("The package %s has been downloaded\n", argv[1]);
+
+	char dst_path[PATH_MAX];
+	strncpy(dst_path, realpath(argv[3], NULL), sizeof(dst_path));
+	// Extracting our file to the given path.
+	printf("Extracting to %s\n", packet.package_download_response.path);
+
 	return 0;
 }
 

@@ -312,7 +312,9 @@ int giveme_netwrok_af_unix_handle_packet_package_download(int sock, struct netwo
         giveme_af_unix_write(sock, &res_packet);
         return 0;
     }
-    int res = giveme_network_download_package(package->details.filehash);
+
+    char filename[PATH_MAX];
+    int res = giveme_network_download_package(package->details.filehash, filename, sizeof(filename));
     if (res < 0)
     {
         res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PROBLEM;
@@ -322,6 +324,7 @@ int giveme_netwrok_af_unix_handle_packet_package_download(int sock, struct netwo
     res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGE_DOWNLOAD_RESPONSE;
     strncpy(res_packet.package_download_response.filehash, package->details.filehash, sizeof(res_packet.package_download_response.filehash));
     strncpy(res_packet.package_download_response.package_name, package->details.name, sizeof(res_packet.package_download_response.package_name));
+    strncpy(res_packet.package_download_response.path, filename, sizeof(res_packet.package_download_response.path));
     res_packet.package_download_response.size = package->details.size;
     giveme_af_unix_write(sock, &res_packet);
     return 0;

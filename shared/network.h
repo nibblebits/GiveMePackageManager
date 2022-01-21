@@ -265,13 +265,25 @@ struct network_package_summary_download_info
 
     int percentage;
 };
+
+
 struct network_package_download
 {
     struct network_package_download_info
     {
         struct network_package_download_connections_info
         {
-            struct sockaddr_in peers[PACKAGE_MAX_KNOWN_IP_ADDRESSES];
+            // Vector of struct network_package_download_uploading_peer*
+            // These are all the peers we tried to connect too
+            struct vector* peers;
+
+            // The total peers that contributed to this download
+            // reward will be split between them.
+            size_t total_contributing;
+            
+            // Should be locked for any access to the peers vector at all
+            // once thread pools have started.
+            pthread_mutex_t mutex;
         } connections;
 
         struct package *package;
@@ -316,6 +328,10 @@ struct network_package_download
 struct network_package_download_uploading_peer
 {
     char ip_address[GIVEME_IP_STRING_SIZE];
+    // The total number of chunks this peer uploaded to us.
+    // If this is zero then they did not contribute at all and should lose rank
+    // in the network.
+    size_t chunks_uploaded;
     struct network_package_download *download;
 };
 /**
@@ -392,8 +408,7 @@ int giveme_network_process_thread_start();
 void giveme_network_broadcast(struct giveme_tcp_packet *packet);
 void giveme_network_update_chain();
 
-int giveme_network_download_package(const char *package_filehash);
-
+int giveme_network_download_package(const char *package_filehash, char* filename_out, size_t filename_size);
 /**
  * @brief Returns download information for a current active download
  * 
