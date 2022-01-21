@@ -7,6 +7,7 @@
 #include "af_unix_network.h"
 #include "network.h"
 #include "misc.h"
+#include "givemezip.h"
 int publish_package(int argc, char *argv[])
 {
 	if (argc < GIVEME_REQUIRED_PUBLISH_ARGC)
@@ -61,7 +62,8 @@ int download_package(int argc, char* argv[])
 	char dst_path[PATH_MAX];
 	strncpy(dst_path, realpath(argv[3], NULL), sizeof(dst_path));
 	// Extracting our file to the given path.
-	printf("Extracting to %s\n", packet.package_download_response.path);
+	printf("Extracting to %s\n", dst_path);
+	giveme_unzip_directory(packet.package_download_response.path, dst_path);
 
 	return 0;
 }

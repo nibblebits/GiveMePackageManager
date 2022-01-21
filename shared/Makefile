@@ -1,4 +1,4 @@
-OBJECTS=./build/log.o ./build/af_unix_network.o ./build/network.o ./build/blockchain.o ./build/package.o ./build/sha256.o ./build/tpool.o ./build/key.o ./build/misc.o ./build/vector.o
+OBJECTS=./build/log.o ./build/af_unix_network.o ./build/network.o ./build/blockchain.o ./build/package.o ./build/sha256.o ./build/tpool.o ./build/key.o ./build/misc.o ./build/vector.o ./build/givemezip.o
 INCLUDES= -I ./
 ADDITIONAL_FLAGS= -g
 all: ${OBJECTS}
@@ -23,7 +23,6 @@ all: ${OBJECTS}
 ./build/blockchain.o:./blockchain.c
 	gcc ${INCLUDES} ./blockchain.c -c ${ADDITIONAL_FLAGS} -o ./build/blockchain.o 
 
-
 ./build/tpool.o:./tpool.c
 	gcc ${INCLUDES} ./tpool.c -c ${ADDITIONAL_FLAGS} -o ./build/tpool.o 
 
@@ -36,6 +35,8 @@ all: ${OBJECTS}
 ./build/vector.o:./vector.c
 	gcc ${INCLUDES} ./vector.c -c ${ADDITIONAL_FLAGS} -o ./build/vector.o 
 
+./build/givemezip.o:./givemezip.c
+	gcc ${INCLUDES} ./givemezip.c -c ${ADDITIONAL_FLAGS} -o ./build/givemezip.o 
 
 clean:
 	rm -rf ${OBJECTS}
