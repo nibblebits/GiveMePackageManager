@@ -1856,7 +1856,13 @@ int giveme_network_download_package(const char *package_filehash, char* filename
         // Package does not exist or is unknown to us
         return -1;
     }
-
+    if (package->downloaded.yes)
+    {
+        // We already have the package? Then what do we need to download it for..
+        strncpy(filename_out, package->downloaded.filepath, filename_size);
+        return 0;
+    }
+    
     // Let's go through all the peers to download chunks from
     char addresses[PACKAGE_MAX_KNOWN_IP_ADDRESSES][GIVEME_IP_STRING_SIZE];
     int res = giveme_package_get_ips(package, addresses);

@@ -89,7 +89,7 @@ int giveme_unzip_directory(const char *zip_filename, const char *output_dir)
     for (zip_uint64_t i = 0; i < num_entries; i++)
     {
         const char *name = zip_get_name(zipper, i, 0);
-        printf("Unzipping file %s\n", name);
+        printf("Extracting file %s\n", name);
     }
     zip_close(zipper);
     return 0;
