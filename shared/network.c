@@ -34,7 +34,6 @@ struct network network;
 int giveme_network_accept_thread(struct queued_work *work);
 int giveme_network_connection_thread(struct queued_work *work);
 int giveme_network_process_thread(struct queued_work *work);
-int giveme_network_packets_thread(struct queued_work* work);
 
 bool giveme_network_connection_connected(struct network_connection *connection);
 int giveme_tcp_dataexchange_send_packet(int client, struct giveme_dataexchange_tcp_packet *packet);
@@ -392,11 +391,7 @@ int giveme_network_process_thread_start()
     return 0;
 }
 
-int giveme_network_packets_thread_start()
-{
-    giveme_queue_work(giveme_network_packets_thread, NULL);
-    return 0;
-}
+
 
 int giveme_network_listen()
 {
@@ -2140,25 +2135,6 @@ out:
     return 0;
 }
 
-/**
- * @brief Responsible of pulling all packets and pushing them to the process queue
- * 
- * @param work 
- * @return int 
- */
-int giveme_network_packets_thread(struct queued_work* work)
-{
-    while(1)
-    {
-        giveme_lock_chain();
-        giveme_network_ping();
-        giveme_network_packets_process();
-        giveme_network_make_block_if_possible();
-        giveme_unlock_chain();
-        usleep(100);
-    }
-    return 0;
-}
 
 int giveme_network_process_thread(struct queued_work *work)
 {
@@ -2167,6 +2143,7 @@ int giveme_network_process_thread(struct queued_work *work)
         // Kept getting issues with lock order. We will lock in the actual loop
         // this may result in slower operations than expected.
         giveme_lock_chain();
+        giveme_network_ping();
         if (network.blockchain.chain_requesting_update && (time(NULL) - network.blockchain.last_chain_update_request) > 30)
         {
             // We have given 30 seconds for people to tell us they are able to update our chain...
@@ -2197,9 +2174,10 @@ int giveme_network_process_thread(struct queued_work *work)
             giveme_network_known_hashes_unlock();
             network.blockchain.last_known_hashes_update = time(NULL);
         }
-
+        giveme_network_packets_process();
+        giveme_network_make_block_if_possible();
         giveme_unlock_chain();
-        sleep(1);
+        usleep(10);
     }
     return 0;
 }

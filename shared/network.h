@@ -420,7 +420,6 @@ void giveme_network_initialize();
 int giveme_network_listen();
 int giveme_network_connection_thread_start();
 int giveme_network_process_thread_start();
-int giveme_network_packets_thread_start();
 void giveme_network_broadcast(struct giveme_tcp_packet *packet);
 void giveme_network_update_chain();
 
