@@ -1054,7 +1054,7 @@ void giveme_network_ping()
         }
 
         // We will only ping once a second.
-        if (!network.connections[i].data || time(NULL) - network.connections[i].data->last_contact < 1)
+        if (!network.connections[i].data || (time(NULL) - network.connections[i].data->last_contact) < 1)
         {
             pthread_mutex_unlock(&network.connections[i].lock);
             continue;
