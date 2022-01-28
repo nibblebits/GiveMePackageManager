@@ -1036,6 +1036,7 @@ void giveme_network_update_known_hashes()
     }
     giveme_network_known_hashes_finalize_result();
 }
+
 void giveme_network_ping()
 {
     struct giveme_tcp_packet packet = {};
@@ -1044,7 +1045,31 @@ void giveme_network_ping()
     struct block *last_block = giveme_blockchain_back();
     assert(last_block);
     memcpy(packet.data.ping.last_hash, giveme_blockchain_block_hash(last_block), sizeof(packet.data.ping.last_hash));
-    giveme_network_broadcast(&packet);
+    
+     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
+    {
+        if (pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
+        {
+            continue;
+        }
+
+        // We will only ping once a second.
+        if (!network.connections[i].data || time(NULL) - network.connections[i].data->last_contact < 1)
+        {
+            pthread_mutex_unlock(&network.connections[i].lock);
+            continue;
+        }
+
+        if (giveme_tcp_send_packet(&network.connections[i], &packet) < 0)
+        {
+            // Problem sending packet? Then we should remove this socket from the connections
+            giveme_log("%s problem sending packet to %s\n", __FUNCTION__, inet_ntoa(network.connections[i].data->addr.sin_addr));
+            giveme_network_disconnect(&network.connections[i]);
+        }
+
+        pthread_mutex_unlock(&network.connections[i].lock);
+    }
+
 }
 
 int giveme_network_connection_socket(struct network_connection *connection)
