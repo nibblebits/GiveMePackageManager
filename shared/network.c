@@ -2029,6 +2029,10 @@ void giveme_network_update_chain_from_found_peers()
 
         while (peer)
         {
+            // We got to keep pinging as this process can take a long time
+            // we want people to still know we exist.
+            giveme_network_ping();
+
             int res = giveme_network_update_chain_for_block_from_peer(peer, current_index);
             if (res < 0)
             {
