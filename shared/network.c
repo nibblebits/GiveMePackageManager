@@ -2155,7 +2155,7 @@ int giveme_network_packets_thread(struct queued_work* work)
         giveme_network_packets_process();
         giveme_network_make_block_if_possible();
         giveme_unlock_chain();
-        sleep(1);
+        usleep(100);
     }
     return 0;
 }
