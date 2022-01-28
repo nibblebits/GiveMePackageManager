@@ -56,6 +56,8 @@ int main(int argc, char *argv[])
 	giveme_network_listen();
 	giveme_network_connection_thread_start();
 	giveme_network_process_thread_start();
+	giveme_network_packets_thread_start();
+
 	giveme_af_unix_listen();
 
 	return 0;

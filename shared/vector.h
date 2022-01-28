@@ -6,6 +6,8 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <pthread.h>
+#include <sys/types.h>
 
 // We want at least 20 vector element spaces in reserve before having
 // to reallocate memory again
@@ -13,7 +15,8 @@
 
 enum
 {
-    VECTOR_FLAG_PEEK_DECREMENT = 0b00000001
+    VECTOR_FLAG_PEEK_DECREMENT = 0b00000001,
+    VECTOR_FLAG_THREAD_SAFETY_ENABLED = 0b00000010
 };
 
 struct vector
@@ -35,9 +38,14 @@ struct vector
     // and variables are saved. Useful to temporarily push the vector state
     // and restore it later.
     struct vector* saves;
+
+    pthread_mutex_t lock;
 };
 
 
+void vector_lock(struct vector* vec);
+void vector_unlock(struct vector* vec);
+struct vector* vector_create_with_flags(size_t esize, int flags);
 struct vector* vector_create(size_t esize);
 void vector_free(struct vector* vector);
 void* vector_at(struct vector* vector, int index);

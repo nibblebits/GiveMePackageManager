@@ -62,8 +62,37 @@ struct vector *vector_create(size_t esize)
     return vec;
 }
 
+void vector_lock(struct vector* vec)
+{
+    assert(vec->flags & VECTOR_FLAG_THREAD_SAFETY_ENABLED);
+    pthread_mutex_lock(&vec->lock);
+}
+
+void vector_unlock(struct vector* vec)
+{
+    assert(vec->flags & VECTOR_FLAG_THREAD_SAFETY_ENABLED);
+    pthread_mutex_unlock(&vec->lock);
+}
+
+struct vector* vector_create_with_flags(size_t esize, int flags)
+{
+    struct vector* vec = vector_create(esize);
+    vec->flags = flags;
+
+    if (vec->flags & VECTOR_FLAG_THREAD_SAFETY_ENABLED)
+    {
+        assert(pthread_mutex_init(&vec->lock, NULL) == 0);
+    }
+    return vec;
+}
+
+
 void vector_free(struct vector *vector)
 {
+    if (vector->flags& VECTOR_FLAG_THREAD_SAFETY_ENABLED)
+    {
+        pthread_mutex_destroy(&vector->lock);
+    }
     free(vector->data);
     free(vector);
 }

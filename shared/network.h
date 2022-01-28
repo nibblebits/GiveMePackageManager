@@ -344,6 +344,19 @@ struct network_transaction
     time_t created;
 };
 
+/**
+ * @brief A queued network packet, awaiting processing.
+ * 
+ */
+struct network_queued_packet
+{
+    // The TCP packet
+    struct giveme_tcp_packet packet;
+    // The time this packet was first discovered
+    time_t time;
+};
+
+
 struct network
 {
     // IP Addresses on the network vector of struct in_addr
@@ -352,6 +365,7 @@ struct network
 
     struct network_connection connections[GIVEME_TCP_SERVER_MAX_CONNECTIONS];
     atomic_int total_connected;
+    
 
     // The last hashes that are known to the network for all connected peers
     // we want to pull towards one last hash thats equal for everyone
@@ -364,6 +378,7 @@ struct network
         int total;
         pthread_mutex_t lock;
     } transactions;
+
 
     // Locked when preforming TCP actions that must not conflict such as modiying
     // the connection array
@@ -405,6 +420,7 @@ void giveme_network_initialize();
 int giveme_network_listen();
 int giveme_network_connection_thread_start();
 int giveme_network_process_thread_start();
+int giveme_network_packets_thread_start();
 void giveme_network_broadcast(struct giveme_tcp_packet *packet);
 void giveme_network_update_chain();
 
