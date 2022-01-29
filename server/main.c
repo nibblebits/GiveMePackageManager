@@ -14,6 +14,7 @@
 #include "tpool.h"
 #include "blockchain.h"
 #include "package.h"
+#include "vector.h"
 #include "log.h"
 #include "key.h"
 

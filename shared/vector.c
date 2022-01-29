@@ -6,6 +6,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+void vector_resize_for(struct vector *vector, int total_elements);
+
 static bool vector_in_bounds_for_at(struct vector *vector, int index)
 {
     return (index >= 0 && index < vector->rindex);
@@ -74,7 +76,7 @@ void vector_unlock(struct vector* vec)
     pthread_mutex_unlock(&vec->lock);
 }
 
-struct vector* vector_create_with_flags(size_t esize, int flags)
+struct vector* vector_create_extra(size_t esize, size_t max_elements, int flags)
 {
     struct vector* vec = vector_create(esize);
     vec->flags = flags;
@@ -83,6 +85,12 @@ struct vector* vector_create_with_flags(size_t esize, int flags)
     {
         assert(pthread_mutex_init(&vec->lock, NULL) == 0);
     }
+
+    if (max_elements > 0)
+    {
+        vector_resize_for(vec, max_elements);
+    }
+    vec->max_elements = max_elements;
     return vec;
 }
 
@@ -128,6 +136,10 @@ void vector_resize(struct vector *vector)
 
 void *vector_at(struct vector *vector, int index)
 {
+    if (vector->max_elements > 0)
+    {
+        index = index % vector->max_elements;
+    }
     return vector->data + (index * vector->esize);
 }
 
@@ -263,13 +275,26 @@ void vector_pop_last_peek(struct vector* vector)
 
 void vector_push(struct vector *vector, void *elem)
 {
-    void *ptr = vector_at(vector, vector->rindex);
+    int real_index = vector->rindex;
+    if (vector->max_elements > 0)
+    {
+        real_index = real_index % vector->max_elements;
+    }
+    void *ptr = vector_at(vector, real_index);
     memcpy(ptr, elem, vector->esize);
 
+    
     vector->rindex++;
     vector->count++;
 
-    if (vector->rindex >= vector->mindex)
+    if (vector->max_elements > 0)
+    {
+        if (vector->count > vector->max_elements)
+        {
+            vector->count = vector->max_elements;
+        }
+    }
+    else if (vector->rindex >= vector->mindex)
     {
         vector_resize(vector);
     }

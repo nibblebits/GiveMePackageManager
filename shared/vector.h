@@ -31,6 +31,9 @@ struct vector
     int flags;
     size_t esize;
 
+    // If this is not zero then the vector when pushing will loop back around
+    // overwriting older elements, rather than resizing the vector.
+    size_t max_elements;
 
     // Vector of struct vector, holds saves of this vector. YOu can save the internal state
     // at all times with vector_save
@@ -45,6 +48,7 @@ struct vector
 
 void vector_lock(struct vector* vec);
 void vector_unlock(struct vector* vec);
+struct vector* vector_create_extra(size_t esize, size_t max_elements, int flags);
 struct vector* vector_create_with_flags(size_t esize, int flags);
 struct vector* vector_create(size_t esize);
 void vector_free(struct vector* vector);

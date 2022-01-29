@@ -899,6 +899,46 @@ void giveme_network_disconnect(struct network_connection *connection)
     connection->data = NULL;
 }
 
+
+void giveme_network_relayed_packet_push(struct giveme_tcp_packet* packet)
+{
+    vector_push(network.relayed_packets, packet);
+}
+
+bool giveme_network_did_relay_packet(struct giveme_tcp_packet* packet)
+{
+    vector_set_peek_pointer(network.relayed_packets, 0);
+    for (int i = 0; i < GIVEME_MAX_RELAYED_PACKET_ELEMENTS; i++)
+    {
+        struct giveme_tcp_packet* rpacket = vector_at(network.relayed_packets, i);
+        if (rpacket && memcmp(rpacket, packet, sizeof(struct giveme_tcp_packet) == 0))
+        {
+            // We have a relayed packet that is equal to the one sent to us..
+            // THis packet was already relayed!!!
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+void giveme_network_relay(struct giveme_tcp_packet* packet)
+{
+    if (giveme_network_did_relay_packet(packet))
+    {
+        // This packet has already been relayed. We must return to avoid an infinite loop
+        // of people passing packets back and fourth forever.
+        return;
+    }
+
+    // Let us broadcast this packet we received to all other peers
+    giveme_network_broadcast(packet);
+
+    // We must add the packet to our relayed packets vector so we know
+    // not to send it again, resulting in an infinate loop
+    giveme_network_relayed_packet_push(packet);
+}
+
 void giveme_network_broadcast(struct giveme_tcp_packet *packet)
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
@@ -1105,6 +1145,9 @@ void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *pack
     }
 
     giveme_log("%s Publish package request for packet %s by %s\n", __FUNCTION__, packet->data.publish_package.data.name, giveme_connection_ip(connection));
+
+    // Package publish packets should be relayed
+    giveme_network_relay(packet);
 }
 
 void giveme_network_packet_handle_publish_key(struct giveme_tcp_packet *packet, struct network_connection *connection)
@@ -2294,6 +2337,8 @@ void giveme_network_initialize()
     giveme_network_load_ips();
     pthread_mutex_unlock(&network.ip_address_lock);
 
+
+    network.relayed_packets = vector_create_extra(sizeof(struct giveme_tcp_packet), GIVEME_MAX_RELAYED_PACKET_ELEMENTS, 0);
     giveme_network_initialize_connections();
 
     // To give some time for the IP's to be added before we get the most up to date blockchain

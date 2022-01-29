@@ -344,19 +344,6 @@ struct network_transaction
     time_t created;
 };
 
-/**
- * @brief A queued network packet, awaiting processing.
- * 
- */
-struct network_queued_packet
-{
-    // The TCP packet
-    struct giveme_tcp_packet packet;
-    // The time this packet was first discovered
-    time_t time;
-};
-
-
 struct network
 {
     // IP Addresses on the network vector of struct in_addr
@@ -378,6 +365,12 @@ struct network
         int total;
         pthread_mutex_t lock;
     } transactions;
+
+
+    // Vector of struct giveme_tcp_packet
+    // These are the packets we have already relayed, if we see the same packet again
+    // we must not relay it.
+    struct vector* relayed_packets;
 
 
     // Locked when preforming TCP actions that must not conflict such as modiying
