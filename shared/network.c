@@ -391,8 +391,6 @@ int giveme_network_process_thread_start()
     return 0;
 }
 
-
-
 int giveme_network_listen()
 {
     int err = 0;
@@ -899,18 +897,17 @@ void giveme_network_disconnect(struct network_connection *connection)
     connection->data = NULL;
 }
 
-
-void giveme_network_relayed_packet_push(struct giveme_tcp_packet* packet)
+void giveme_network_relayed_packet_push(struct giveme_tcp_packet *packet)
 {
     vector_push(network.relayed_packets, packet);
 }
 
-bool giveme_network_did_relay_packet(struct giveme_tcp_packet* packet)
+bool giveme_network_did_relay_packet(struct giveme_tcp_packet *packet)
 {
     vector_set_peek_pointer(network.relayed_packets, 0);
     for (int i = 0; i < GIVEME_MAX_RELAYED_PACKET_ELEMENTS; i++)
     {
-        struct giveme_tcp_packet* rpacket = vector_at(network.relayed_packets, i);
+        struct giveme_tcp_packet *rpacket = vector_at(network.relayed_packets, i);
         if (rpacket && memcmp(rpacket, packet, sizeof(struct giveme_tcp_packet) == 0))
         {
             // We have a relayed packet that is equal to the one sent to us..
@@ -918,11 +915,11 @@ bool giveme_network_did_relay_packet(struct giveme_tcp_packet* packet)
             return true;
         }
     }
-    
+
     return false;
 }
 
-void giveme_network_relay(struct giveme_tcp_packet* packet)
+void giveme_network_relay(struct giveme_tcp_packet *packet)
 {
     if (giveme_network_did_relay_packet(packet))
     {
@@ -1085,8 +1082,8 @@ void giveme_network_ping()
     struct block *last_block = giveme_blockchain_back();
     assert(last_block);
     memcpy(packet.data.ping.last_hash, giveme_blockchain_block_hash(last_block), sizeof(packet.data.ping.last_hash));
-    
-     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
+
+    for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
         if (pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
         {
@@ -1109,7 +1106,6 @@ void giveme_network_ping()
 
         pthread_mutex_unlock(&network.connections[i].lock);
     }
-
 }
 
 int giveme_network_connection_socket(struct network_connection *connection)
@@ -1129,7 +1125,7 @@ void giveme_network_packet_handle_publish_package(struct giveme_tcp_packet *pack
 
     // We got a blank IP? Then this is not from a relay
     // we should set the IP to the IP address who connected to us.
-    // This will be the IP address of the peer who holds the package data that can 
+    // This will be the IP address of the peer who holds the package data that can
     // be downloaded a later date.. All downlaoders will also become peers  or seeds
     // of the file data.
     if (!packet->data.publish_package.ip_address[0])
@@ -1169,29 +1165,108 @@ void giveme_network_clear_network_transactions_of_block(struct block *block)
     giveme_network_clear_transactions(&network.transactions);
 }
 
-void giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packet, struct network_connection *connection)
+void giveme_network_awaiting_transactions_remove_succeeded()
+{
+    for (int i = 0; i < network.awaiting_transactions.mem_total; i++)
+    {
+        // We don't care about packets that are not awaiting transactions
+        // these are free slots... get rid of them.
+        struct network_awaiting_transaction blank_transaction = {};
+        if (memcmp(&blank_transaction, &network.awaiting_transactions.data[i], sizeof(blank_transaction)) == 0)
+        {
+            continue;
+        }
+
+        struct network_awaiting_transaction *transaction = &network.awaiting_transactions.data[i];
+        if (transaction->state == GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_SUCCESS)
+        {
+            memcpy(transaction, &blank_transaction, sizeof(struct network_awaiting_transaction));
+            network.awaiting_transactions.total--;
+        }
+    }
+}
+
+struct network_awaiting_transaction *giveme_network_awaiting_transactions_get_by_packet_id(int id)
+{
+    for (int i = 0; i < network.awaiting_transactions.mem_total; i++)
+    {
+        // We don't care about packets that are not awaiting transactions
+        // these are free slots... get rid of them.
+        struct network_awaiting_transaction blank_transaction = {};
+        if (memcmp(&blank_transaction, &network.awaiting_transactions.data[i], sizeof(blank_transaction)) == 0)
+        {
+            continue;
+        }
+
+        struct network_awaiting_transaction *transaction = &network.awaiting_transactions.data[i];
+        if (giveme_tcp_packet_id(&transaction->packet) == id)
+        {
+            return transaction;
+        }
+    }
+
+    return NULL;
+}
+
+int giveme_network_handle_added_block(struct block *block)
+{
+    for (int i = 0; i < GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK; i++)
+    {
+        // Ignore all empty transactions.
+        struct block_transaction empty_transaction = {};
+        if (memcmp(&empty_transaction, &block->data.transactions.transactions[i], sizeof(empty_transaction)) == 0)
+        {
+            continue;
+        }
+
+        struct block_transaction *target_transaction = &block->data.transactions.transactions[i];
+        giveme_network_awaiting_transactions_lock();
+        // Let's grab the ID of this target transaction and remove it from our awaiting transactions
+        // since we have now processed it.
+        struct network_awaiting_transaction *awaiting_transaction =
+            giveme_network_awaiting_transactions_get_by_packet_id(target_transaction->data.signed_data.data.id);
+        if (awaiting_transaction)
+        {
+            // We had an awaiting transaction for the block transaction.
+            // Now we can confirm we have a block for this transaction
+            // lets update the state
+            awaiting_transaction->state = GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_SUCCESS;
+            giveme_log("%s resolved awaiting transaction with ID %i, block %s has resolved it\n", target_transaction->data.signed_data.data.id, giveme_blockchain_block_hash(block));
+        }
+
+        giveme_network_awaiting_transactions_unlock();
+    }
+}
+int giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     if (time(NULL) - network.blockchain.last_block_receive < GIVEME_SECONDS_TO_MAKE_BLOCK)
     {
         // We already have made the block for this cycle
         giveme_log("%s verified block has been resent to us, we will ignore it as we already registered a block this cycle\n", __FUNCTION__);
-        return;
+        return -1;
     }
     giveme_log("%s new verified block discovered, attempting to add to chain\n", __FUNCTION__);
     // We must ensure that this is the verifiers public key who signed this
     if (!key_cmp(giveme_blockchain_get_verifier_key(), &packet->pub_key))
     {
         giveme_log("%s someone other than the verifier published a block, we will ignore it\n", __FUNCTION__);
-        return;
+        return -1;
     }
 
     int res = giveme_blockchain_add_block(&packet->data.verified_block.block);
     if (res < 0)
     {
-        giveme_network_clear_network_transactions_of_block(&packet->data.verified_block.block);
+        giveme_log("%s there was a problem adding the block to the chain, it may contain malformed or illegal transactions\n", __FUNCTION__);
+        return -1;
     }
+
+    giveme_network_handle_added_block(&packet->data.verified_block.block);
+    giveme_network_clear_transactions(&network.transactions);
+
     network.blockchain.last_block_receive = time(NULL);
     network.blockchain.last_block_processed = time(NULL);
+
+    return 0;
 }
 
 int giveme_network_upload_chain(struct network_connection_data *conn, struct block *from_block, struct block *end_block, size_t total_blocks)
@@ -1400,6 +1475,20 @@ void giveme_network_packet_handle_ping(struct giveme_tcp_packet *packet, struct 
 
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
+    // Is the packet signed? If so we need to verify its signed correctly
+    if (giveme_tcp_packet_signed(packet))
+    {
+        // We have a signed packet?? Let's ensure its signed correctly with the signature
+        // given to us.
+        int res = giveme_tcp_packet_signature_verify(packet);
+        if (res < 0)
+        {
+            // We do not deal with packets not signed correctly... that is a security concern
+            // we ignore all packets not signed properly.
+            return;
+        }
+    }
+
     switch (packet->data.type)
     {
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PING:
@@ -1460,6 +1549,7 @@ void giveme_network_packets_process()
                     giveme_log("%s failed to read packet even though data was supposed to be available\n", __FUNCTION__);
                     goto loop_end;
                 }
+
                 giveme_network_packet_process(&packet, connection);
             }
         } while (count > 0);
@@ -1504,12 +1594,16 @@ int giveme_network_create_block_transaction_for_network_transaction(struct netwo
         strncpy(transaction_out->data.publish_public_key.name, transaction->packet.data.publish_public_key.name, sizeof(transaction_out->data.publish_public_key.name));
         memcpy(&transaction_out->data.publish_public_key.pub_key, &transaction->packet.data.publish_public_key.pub_key, sizeof(transaction_out->data.publish_public_key.pub_key));
         break;
-    
+
     default:
         res = -1;
     }
 
     transaction_out->data.timestamp = transaction->created;
+    // We must copy the signed data from the network transaction to the block transaction
+    // this will allow us to preserve important data signed by the creator
+    // of the packet that made the network transaction
+    memcpy(&transaction_out->data.signed_data, &transaction->packet.data.signed_data, sizeof(transaction_out->data.signed_data));
     sha256_data(&transaction_out->data, transaction_out->hash, sizeof(transaction_out->data));
     return res;
 }
@@ -1611,7 +1705,7 @@ struct network_package_download *giveme_network_new_package_download(struct pack
     // have been downloaded already.
     download->info.download.chunks.chunk_map = calloc(download->info.download.chunks.total, sizeof(CHUNK_MAP_ENTRY));
     download->info.download.tmp_fp = tmp_filename_fp;
-    
+
     res = download;
 
 out_err:
@@ -1622,7 +1716,6 @@ out_err:
             free(download);
             vector_free(download->info.connections.peers);
         }
-        
 
         if (tmp_filename_fp)
         {
@@ -1632,12 +1725,12 @@ out_err:
     return res;
 }
 
-void giveme_network_download_package_free_peer(struct network_package_download_uploading_peer* peer)
+void giveme_network_download_package_free_peer(struct network_package_download_uploading_peer *peer)
 {
     free(peer);
 }
 
-size_t giveme_network_download_package_peer_count(struct network_package_download* download)
+size_t giveme_network_download_package_peer_count(struct network_package_download *download)
 {
     return vector_count(download->info.connections.peers);
 }
@@ -1648,15 +1741,14 @@ void giveme_network_free_package_download(struct network_package_download *downl
     munmap(download->info.download.data, download->info.package->details.size);
     free(download->info.download.chunks.chunk_map);
 
-    struct network_package_download_uploading_peer* peer = vector_back_ptr_or_null(download->info.connections.peers);
-    while(peer)
+    struct network_package_download_uploading_peer *peer = vector_back_ptr_or_null(download->info.connections.peers);
+    while (peer)
     {
         giveme_network_download_package_free_peer(peer);
         peer = vector_back_ptr_or_null(download->info.connections.peers);
     }
     vector_free(download->info.connections.peers);
     free(download);
-    
 }
 
 char *giveme_network_download_file_data_ptr(struct network_package_download *download)
@@ -1794,7 +1886,7 @@ int giveme_network_download_package_peer_session_download_chunk(struct network_p
     // the package in question.
     off_t offset = giveme_package_file_offset_for_chunk(package, required_chunk);
     size_t total_bytes = packet.package_send_chunk.chunk_size;
-    char *data = giveme_network_download_file_data_ptr(download)+offset;
+    char *data = giveme_network_download_file_data_ptr(download) + offset;
 
     // Will we be in bounds?
     if (package->details.size < offset + total_bytes)
@@ -1835,7 +1927,6 @@ out:
         peer->chunks_uploaded++;
         pthread_mutex_unlock(&download->info.connections.mutex);
     }
-    
 
 out_completed:
     return res;
@@ -1900,7 +1991,7 @@ void giveme_network_downloads_remove(struct network_package_download *download)
 {
     vector_pop_value(network.downloads, download);
 }
-struct network_package_summary_download_info giveme_network_download_info(struct network_package_download* download)
+struct network_package_summary_download_info giveme_network_download_info(struct network_package_download *download)
 {
     struct network_package_summary_download_info info = {};
     strncpy(info.datahash, download->info.package->details.filehash, sizeof(info.datahash));
@@ -1910,12 +2001,12 @@ struct network_package_summary_download_info giveme_network_download_info(struct
     return info;
 }
 
-void giveme_network_download_add_peer(struct network_package_download* download, struct network_package_download_uploading_peer* peer)
+void giveme_network_download_add_peer(struct network_package_download *download, struct network_package_download_uploading_peer *peer)
 {
     vector_push(download->info.connections.peers, &peer);
 }
 
-int giveme_network_download_package(const char *package_filehash, char* filename_out, size_t filename_size)
+int giveme_network_download_package(const char *package_filehash, char *filename_out, size_t filename_size)
 {
     struct network_package_download *download = NULL;
     // We must download the different chunks from several peers for efficiency.
@@ -1932,7 +2023,7 @@ int giveme_network_download_package(const char *package_filehash, char* filename
         strncpy(filename_out, package->downloaded.filepath, filename_size);
         return 0;
     }
-    
+
     // Let's go through all the peers to download chunks from
     char addresses[PACKAGE_MAX_KNOWN_IP_ADDRESSES][GIVEME_IP_STRING_SIZE];
     int res = giveme_package_get_ips(package, addresses);
@@ -1973,7 +2064,6 @@ int giveme_network_download_package(const char *package_filehash, char* filename
         struct network_package_download_uploading_peer *peer = giveme_network_download_package_new_peer(addresses[i], download);
         giveme_queue_work_for_pool(pool, giveme_network_download_package_peer_session, peer);
         giveme_log("%s queued connection for peer %s will attempt to connect and download chunks of package\n", __FUNCTION__, addresses[i]);
-
     }
 
     giveme_log("%s starting pool jobs to download the package\n", __FUNCTION__);
@@ -2002,7 +2092,7 @@ int giveme_network_download_package(const char *package_filehash, char* filename
 
     giveme_log("%s the file was downloaded successfully into temporary file %s\n", __FUNCTION__, download->info.download.tmp_filename);
     giveme_log("%s moving to package directory\n", __FUNCTION__);
-    
+
     char package_path[PATH_MAX];
     strncpy(package_path, giveme_package_path(package->details.filehash), sizeof(package_path));
     rename(download->info.download.tmp_filename, package_path);
@@ -2207,7 +2297,6 @@ out:
     return 0;
 }
 
-
 int giveme_network_process_thread(struct queued_work *work)
 {
     while (1)
@@ -2296,6 +2385,153 @@ void giveme_network_initialize_connections()
         }
     }
 }
+
+/**
+ * @brief Returns the file size for the awaiting for transactions file if their was total_blocks provided
+ * 
+ * @param total_blocks 
+ * @return size_t 
+ */
+size_t giveme_network_awaiting_transactions_file_size(size_t total_blocks)
+{
+    return total_blocks * sizeof(struct network_awaiting_transaction);
+}
+
+size_t giveme_network_awaiting_transactions_count_for_size(size_t filesize)
+{
+    return filesize / sizeof(struct network_awaiting_transaction);
+}
+
+char *giveme_awaiting_transactions_path()
+{
+    static char awaiting_for_block_path[PATH_MAX];
+    sprintf(awaiting_for_block_path, "%s/%s/%s", getenv(GIVEME_DATA_BASE_DIRECTORY_ENV), GIVEME_DATA_BASE, GIVEME_AWAITING_TRANSACTIONS_PATH);
+    return awaiting_for_block_path;
+}
+
+struct network_awaiting_transaction *giveme_network_awaiting_transaction_find_free_slot()
+{
+    for (int i = 0; i < network.awaiting_transactions.mem_total; i++)
+    {
+        struct network_awaiting_transaction blank_packet = {};
+        if (memcmp(&blank_packet, &network.awaiting_transactions.data[i], sizeof(blank_packet)) == 0)
+        {
+            return &network.awaiting_transactions.data[i];
+        }
+    }
+
+    return NULL;
+}
+
+int giveme_network_awaiting_transactions_resize()
+{
+    size_t new_block_count = network.awaiting_transactions.mem_total + GIVEME_AWAITING_FOR_BLOCK_MINIMUM_BLOCK_SIZE;
+    size_t new_file_size = giveme_network_awaiting_transactions_file_size(new_block_count);
+    munmap(network.awaiting_transactions.data, giveme_network_awaiting_transactions_file_size(network.awaiting_transactions.mem_total));
+    ftruncate(network.awaiting_transactions.fp, new_file_size);
+    network.awaiting_transactions.data = mmap(0, new_file_size, PROT_READ | PROT_WRITE, MAP_SHARED, network.awaiting_transactions.fp, 0);
+    if (network.awaiting_transactions.data == MAP_FAILED)
+    {
+        giveme_log("%s Failed to map our awaiting transactions file into memory\n", __FUNCTION__);
+        return -1;
+    }
+
+    network.awaiting_transactions.mem_total = new_block_count;
+    return 0;
+}
+
+void giveme_network_awaiting_transactions_lock()
+{
+    pthread_mutex_lock(&network.awaiting_transactions.lock);
+}
+
+void giveme_network_awaiting_transactions_unlock()
+{
+    pthread_mutex_unlock(&network.awaiting_transactions.lock);
+}
+
+int giveme_network_awaiting_transaction_add(struct network_awaiting_transaction *transaction)
+{
+    int res = 0;
+    transaction->state = GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_PENDING;
+    struct network_awaiting_transaction *available_slot = giveme_network_awaiting_transaction_find_free_slot();
+    if (!available_slot)
+    {
+        res = giveme_network_awaiting_transactions_resize();
+        if (res < 0)
+        {
+            goto out;
+        }
+
+        available_slot = giveme_network_awaiting_transaction_find_free_slot();
+        if (!available_slot)
+        {
+            res = -1;
+            goto out;
+        }
+    }
+
+    // We have an available slot, copy the packet data in.
+    memcpy(available_slot, transaction, sizeof(struct network_awaiting_transaction));
+
+    // Let's increment the total avaialble
+    network.awaiting_transactions.total++;
+out:
+    // Okay we added the awaiting transaction but we are not done
+    // broadcast the packet for first time discovery
+    giveme_network_broadcast(&transaction->packet);
+    return res;
+}
+
+size_t giveme_network_count_awaiting_transactions()
+{
+    size_t count = 0;
+    for (int i = 0; i < network.awaiting_transactions.mem_total; i++)
+    {
+        struct network_awaiting_transaction blank_transaction = {};
+        if (memcmp(&blank_transaction, &network.awaiting_transactions.data[i], sizeof(struct network_awaiting_transaction)) != 0)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
+int giveme_network_initialize_awaiting_transactions()
+{
+    if (pthread_mutex_init(&network.awaiting_transactions.lock, NULL) != 0)
+    {
+        giveme_log("Failed to initialize awaiting_transactions mutex\n");
+        return -1;
+    }
+
+    bool exists = file_exists(giveme_awaiting_transactions_path());
+    size_t total_bytes = 0;
+    if (exists)
+    {
+        struct stat s;
+        fstat(network.awaiting_transactions.fp, &s);
+        total_bytes = s.st_size;
+    }
+    network.awaiting_transactions.fp = open(giveme_awaiting_transactions_path(), O_RDWR | O_CREAT, (mode_t)0600);
+    if (!exists)
+    {
+        total_bytes = giveme_network_awaiting_transactions_file_size(GIVEME_AWAITING_FOR_BLOCK_MINIMUM_BLOCK_SIZE);
+        ftruncate(network.awaiting_transactions.fp, total_bytes);
+    }
+    network.awaiting_transactions.data = mmap(0, total_bytes, PROT_READ | PROT_WRITE, MAP_SHARED, network.awaiting_transactions.fp, 0);
+
+    if (network.awaiting_transactions.data == MAP_FAILED)
+    {
+        giveme_log("%s Failed to map our awaiting transactions file into memory\n", __FUNCTION__);
+        return -1;
+    }
+    network.awaiting_transactions.mem_total = giveme_network_awaiting_transactions_count_for_size(total_bytes);
+    network.awaiting_transactions.total = giveme_network_count_awaiting_transactions();
+
+    return 0;
+}
+
 void giveme_network_initialize()
 {
     int res = 0;
@@ -2323,6 +2559,12 @@ void giveme_network_initialize()
         goto out;
     }
 
+    res = giveme_network_initialize_awaiting_transactions();
+    if (res < 0)
+    {
+        goto out;
+    }
+
     network.hashes.hashes = vector_create(sizeof(struct network_last_hash *));
     network.downloads = vector_create(sizeof(struct network_package_download *));
 
@@ -2337,7 +2579,6 @@ void giveme_network_initialize()
     giveme_network_load_ips();
     pthread_mutex_unlock(&network.ip_address_lock);
 
-
     network.relayed_packets = vector_create_extra(sizeof(struct giveme_tcp_packet), GIVEME_MAX_RELAYED_PACKET_ELEMENTS, 0);
     giveme_network_initialize_connections();
 
@@ -2350,4 +2591,65 @@ out:
     {
         giveme_log("Network initialization failed\n");
     }
+}
+
+struct signed_data *giveme_tcp_packet_signed_data(struct giveme_tcp_packet *packet)
+{
+    return &packet->data.signed_data;
+}
+
+/**
+ * Generates a random transaction ID and then signs this packet
+ * @param packet 
+ */
+int giveme_tcp_packet_sign(struct giveme_tcp_packet *packet)
+{
+    int res = 0;
+    packet->data.signed_data.data.id = rand() % 999999999;
+    char tmp_hash[SHA256_STRING_LENGTH];
+    sha256_data(&packet->data.signed_data.data, tmp_hash, sizeof(packet->data.signed_data));
+    res = private_sign_key_sig_hash(&packet->data.signed_data.signature, tmp_hash);
+    if (res < 0)
+    {
+        giveme_log("%s failed to sign the packet with our private key\n", __FUNCTION__);
+        goto out;
+    }
+
+out:
+    return res;
+}
+
+int giveme_tcp_packet_id(struct giveme_tcp_packet *packet)
+{
+    if (!packet->data.signed_data.is_signed)
+    {
+        return -1;
+    }
+
+    return packet->data.signed_data.data.id;
+}
+
+bool giveme_tcp_packet_signed(struct giveme_tcp_packet *packet)
+{
+    return packet->data.signed_data.is_signed;
+}
+
+int giveme_tcp_packet_signature_verify(struct giveme_tcp_packet *packet)
+{
+    if (!giveme_tcp_packet_signed(packet))
+    {
+        // The packet is not signed so we will just say it was verified correctly
+        return 0;
+    }
+
+    int res = 0;
+    char tmp_hash[SHA256_STRING_LENGTH];
+    sha256_data(&packet->data.signed_data.data, tmp_hash, sizeof(packet->data.signed_data.data));
+    if (public_verify_key_sig_hash(&packet->data.signed_data.signature, tmp_hash) < 0)
+    {
+        giveme_log("%s the packet was incorrectly signed.\n", __FUNCTION__);
+        res = -1;
+    }
+
+    return res;
 }

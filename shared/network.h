@@ -163,6 +163,8 @@ struct giveme_tcp_packet
         int type;
         int flags;
 
+        // Data that must be signed to prove authentication
+        struct signed_data signed_data;
         union
         {
 
@@ -266,7 +268,6 @@ struct network_package_summary_download_info
     int percentage;
 };
 
-
 struct network_package_download
 {
     struct network_package_download_info
@@ -275,12 +276,12 @@ struct network_package_download
         {
             // Vector of struct network_package_download_uploading_peer*
             // These are all the peers we tried to connect too
-            struct vector* peers;
+            struct vector *peers;
 
             // The total peers that contributed to this download
             // reward will be split between them.
             size_t total_contributing;
-            
+
             // Should be locked for any access to the peers vector at all
             // once thread pools have started.
             pthread_mutex_t mutex;
@@ -344,6 +345,30 @@ struct network_transaction
     time_t created;
 };
 
+enum
+{
+    GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_PENDING,
+    GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_FAILED,
+    GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_SUCCESS,
+};
+
+/**
+ * @brief Awaiting transactions are only stored for the peer that created them.
+ * Such as a peer deciding to transfer funds, an awaiting transaction will be created
+ * only on his CLIENT. Then this awaiting transaction will keep being transmitted after
+ * each successful block cycle, until it becomes apart of the blockchain.
+ * 
+ * After constant failures eventually the transaction state will become STATE_FAILED.
+ * 
+ */
+struct network_awaiting_transaction
+{
+    int state;
+    int flags;
+    // The packet associated with this pending transaction.
+    struct giveme_tcp_packet packet;
+};
+
 struct network
 {
     // IP Addresses on the network vector of struct in_addr
@@ -352,7 +377,6 @@ struct network
 
     struct network_connection connections[GIVEME_TCP_SERVER_MAX_CONNECTIONS];
     atomic_int total_connected;
-    
 
     // The last hashes that are known to the network for all connected peers
     // we want to pull towards one last hash thats equal for everyone
@@ -366,12 +390,34 @@ struct network
         pthread_mutex_t lock;
     } transactions;
 
-
     // Vector of struct giveme_tcp_packet
     // These are the packets we have already relayed, if we see the same packet again
     // we must not relay it.
-    struct vector* relayed_packets;
+    struct vector *relayed_packets;
 
+    struct
+    {
+        // Open file descriptor for memory mapped file
+        int fp;
+        /**
+     * An array of tcp packet transactions that are awaiting for a block to be created for them
+     * During receving a new block if we have not found an associating transaction
+     * that matches this packet, then we can assume that the command to the network failed
+     * and it needs to be rebroadcast to the entire network for processing again.
+     * 
+     * When a block is found that matches this packet we must remove it from the awaiting queue.
+     * NOTE: THESE APPLY ONLY TO OUR OWN CLIENTS NETWORK TRANSACTIONS CREATED AND SIGNED BY US!
+     */
+        struct network_awaiting_transaction *data;
+
+        // Total awaiting transactions that we have made
+        size_t total;
+
+        // Total available blocks in memory that can be used for awaiting transactions
+        size_t mem_total;
+
+        pthread_mutex_t lock;
+    } awaiting_transactions;
 
     // Locked when preforming TCP actions that must not conflict such as modiying
     // the connection array
@@ -415,14 +461,52 @@ int giveme_network_connection_thread_start();
 int giveme_network_process_thread_start();
 void giveme_network_broadcast(struct giveme_tcp_packet *packet);
 void giveme_network_update_chain();
+int giveme_network_awaiting_transaction_add(struct network_awaiting_transaction *transaction);
+void giveme_network_awaiting_transactions_lock();
+void giveme_network_awaiting_transactions_unlock();
 
-int giveme_network_download_package(const char *package_filehash, char* filename_out, size_t filename_size);
+struct signed_data *giveme_tcp_packet_signed_data(struct giveme_tcp_packet *packet);
+
+int giveme_network_download_package(const char *package_filehash, char *filename_out, size_t filename_size);
 /**
  * @brief Returns download information for a current active download
  * 
  * @param download 
  * @return struct network_package_summary_download_info 
  */
-struct network_package_summary_download_info giveme_network_download_info(struct network_package_download* download);
+struct network_package_summary_download_info giveme_network_download_info(struct network_package_download *download);
+
+/**
+ * @brief Signed the packet
+ * 
+ * @param packet 
+ * @return int 
+ */
+int giveme_tcp_packet_sign(struct giveme_tcp_packet *packet);
+
+/**
+ * @brief Returns the packet ID. 
+ * This function only works for signed packets.
+ * 
+ * @param packet 
+ * @return int Returns the packet ID or -1 on error.
+ */
+int giveme_tcp_packet_id(struct giveme_tcp_packet *packet);
+/**
+ * @brief Returns true if this packet is signed.
+ * 
+ * @param packet 
+ * @return true 
+ * @return false 
+ */
+bool giveme_tcp_packet_signed(struct giveme_tcp_packet *packet);
+
+/**
+ * @brief Verifies that the signature is what signed the data in the packet.
+ * 
+ * @param packet 
+ * @return Returns 0 on signature validation being success otherwise a negative value.
+ */
+int giveme_tcp_packet_signature_verify(struct giveme_tcp_packet *packet);
 
 #endif

@@ -127,11 +127,30 @@ struct block_transaction_new_package_data
     size_t size;
 };
 
+struct signed_data
+{
+    struct
+    {
+        // Entirely randomly generated ID that represents this transaction
+        // This identifier is only guaranteed to be unique per block creation
+        // it is used to identify later on which packet made a transaction
+        int id;
+    } data;
+    struct key_signature_hash signature;
+    // True if the packet is signed. If we have a signed packet it must pass
+    // signature verification
+    bool is_signed;
+};
+
 struct block_transaction
 {
     struct block_transaction_data
     {
         int type;
+
+        // Data that must be signed by the creator of the transaction to prove
+        // authentication
+        struct signed_data signed_data;
         union
         {
             struct block_transaction_new_package
@@ -326,6 +345,6 @@ struct block *giveme_blockchain_get_block_with_index(int index);
  * @param block 
  * @return const char* 
  */
-const char* giveme_blockchain_block_hash(struct block* block);
+const char *giveme_blockchain_block_hash(struct block *block);
 
 #endif

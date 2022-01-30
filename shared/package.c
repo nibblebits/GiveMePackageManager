@@ -430,6 +430,7 @@ int giveme_package_create(const char *path, const char *package_name)
     }
 
     struct giveme_tcp_packet packet = {};
+    
     packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE;
     strncpy(packet.data.publish_package.data.name, package_name, sizeof(packet.data.publish_package.data.name));
     sha256_file(dst_path_hashed, packet.data.publish_package.data.filehash);
@@ -445,8 +446,28 @@ int giveme_package_create(const char *path, const char *package_name)
 
         return res;
     }
-    // We should sign the data.
-    giveme_network_broadcast(&packet);
+
+    // Let us sign this packet
+    res = giveme_tcp_packet_sign(&packet);
+    if (res < 0)
+    {
+        giveme_log("%s we failed to sign this TCP packet\n", __FUNCTION__);
+        return res;
+    }
+
+
+    // Add this packet as an awaiting transaction.
+    // It will be broadcast to everyone when appropiate until it successfully creates a transaction
+    giveme_network_awaiting_transactions_lock();
+    res = giveme_network_awaiting_transaction_add(&(struct network_awaiting_transaction){.packet=packet});
+    giveme_network_awaiting_transactions_unlock();
+
+    if (res < 0)
+    {
+        giveme_log("%s failed to add a new awaiting transaction\n");
+        return res;
+    }
+
 
     return res;
 }
