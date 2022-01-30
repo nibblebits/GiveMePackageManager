@@ -2608,7 +2608,7 @@ int giveme_tcp_packet_sign(struct giveme_tcp_packet *packet)
     int res = 0;
     packet->data.signed_data.data.id = rand() % 999999999;
     char tmp_hash[SHA256_STRING_LENGTH];
-    sha256_data(&packet->data.signed_data.data, tmp_hash, sizeof(packet->data.signed_data));
+    sha256_data(&packet->data.signed_data.data, tmp_hash, sizeof(packet->data.signed_data.data));
     res = private_sign_key_sig_hash(&packet->data.signed_data.signature, tmp_hash);
     if (res < 0)
     {
