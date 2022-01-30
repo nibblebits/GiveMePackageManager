@@ -2506,6 +2506,8 @@ int giveme_network_initialize_awaiting_transactions()
     }
 
     bool exists = file_exists(giveme_awaiting_transactions_path());
+    
+    network.awaiting_transactions.fp = open(giveme_awaiting_transactions_path(), O_RDWR | O_CREAT, (mode_t)0600);
     size_t total_bytes = 0;
     if (exists)
     {
@@ -2513,7 +2515,6 @@ int giveme_network_initialize_awaiting_transactions()
         fstat(network.awaiting_transactions.fp, &s);
         total_bytes = s.st_size;
     }
-    network.awaiting_transactions.fp = open(giveme_awaiting_transactions_path(), O_RDWR | O_CREAT, (mode_t)0600);
     if (!exists)
     {
         total_bytes = giveme_network_awaiting_transactions_file_size(GIVEME_AWAITING_FOR_BLOCK_MINIMUM_BLOCK_SIZE);
