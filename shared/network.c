@@ -1231,7 +1231,7 @@ int giveme_network_handle_added_block(struct block *block)
             // Now we can confirm we have a block for this transaction
             // lets update the state
             awaiting_transaction->state = GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_SUCCESS;
-            giveme_log("%s resolved awaiting transaction with ID %i, block %s has resolved it\n", target_transaction->data.signed_data.data.id, giveme_blockchain_block_hash(block));
+            giveme_log("%s resolved awaiting transaction with ID %i, block %s has resolved it\n", __FUNCTION__, target_transaction->data.signed_data.data.id, giveme_blockchain_block_hash(block));
         }
 
         giveme_network_awaiting_transactions_unlock();
