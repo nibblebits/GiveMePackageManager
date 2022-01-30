@@ -62,10 +62,29 @@ struct network_transaction *giveme_network_new_transaction()
     return calloc(1, sizeof(struct network_transaction));
 }
 
+struct network_transaction* giveme_network_network_transaction_get_by_id(int transaction_packet_id)
+{
+    for (int i = 0; i < GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK; i++)
+    {
+        if (network.transactions.awaiting[i] && giveme_tcp_packet_id(&network.transactions.awaiting[i]->packet) == transaction_packet_id)
+        {
+            return network.transactions.awaiting[i];
+        }
+    }
+
+    return NULL;
+}
 int giveme_network_create_transaction_for_packet(struct giveme_tcp_packet *packet)
 {
     int res = 0;
     pthread_mutex_lock(&network.transactions.lock);
+    if (giveme_network_network_transaction_get_by_id(giveme_tcp_packet_id(packet)))
+    {
+        // We already are dealing with this packet.. we wont allow it again
+        res = -1;
+        goto out;
+    }
+    
     struct network_transaction **slot = giveme_network_find_network_transaction_slot();
     if (!slot)
     {
