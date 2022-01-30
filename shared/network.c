@@ -2616,6 +2616,7 @@ int giveme_tcp_packet_sign(struct giveme_tcp_packet *packet)
         goto out;
     }
 
+    packet->data.signed_data.is_signed = true;
 out:
     return res;
 }
