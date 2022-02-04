@@ -62,7 +62,7 @@ struct network_transaction *giveme_network_new_transaction()
     return calloc(1, sizeof(struct network_transaction));
 }
 
-struct network_transaction* giveme_network_network_transaction_get_by_id(int transaction_packet_id)
+struct network_transaction *giveme_network_network_transaction_get_by_id(int transaction_packet_id)
 {
     for (int i = 0; i < GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK; i++)
     {
@@ -1256,6 +1256,31 @@ int giveme_network_handle_added_block(struct block *block)
         giveme_network_my_awaiting_transactions_unlock();
     }
 }
+
+void giveme_network_rebroadcast_my_pending_transactions()
+{
+    giveme_network_my_awaiting_transactions_lock();
+
+    for (int i = 0; i < network.my_awaiting_transactions.mem_total; i++)
+    {
+        struct network_awaiting_transaction blank_transaction = {};
+        struct network_awaiting_transaction* transaction = &network.my_awaiting_transactions.data[i];
+        if (memcmp(transaction, &blank_transaction, sizeof(blank_transaction)) == 0)
+        {
+            continue;
+        }
+
+        // We only want to rebroadcast pending transactions.
+        if (transaction->state != GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_PENDING)
+        {
+            continue;
+        }
+
+        giveme_network_broadcast(&transaction->packet);
+    }
+    giveme_network_my_awaiting_transactions_unlock();
+}
+
 int giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     if (time(NULL) - network.blockchain.last_block_receive < GIVEME_SECONDS_TO_MAKE_BLOCK)
@@ -1282,6 +1307,8 @@ int giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packet
     giveme_network_handle_added_block(&packet->data.verified_block.block);
     giveme_network_clear_transactions(&network.transactions);
 
+    // Now we need to rebroadcast pending transactions that are still not completed.
+    giveme_network_rebroadcast_my_pending_transactions();
     network.blockchain.last_block_receive = time(NULL);
     network.blockchain.last_block_processed = time(NULL);
 
@@ -1785,10 +1812,10 @@ struct network_package_download_uploading_peer *giveme_network_download_package_
 
 /**
  * @brief Finds a chunk that needs to be downloaded from a peer.
- * 
- * @param download 
- * @param chunk_out 
- * @return int 
+ *
+ * @param download
+ * @param chunk_out
+ * @return int
  */
 int giveme_network_download_package_get_required_chunk(struct network_package_download *download, int *chunk_out)
 {
@@ -1976,7 +2003,7 @@ int giveme_network_download_package_peer_session(struct queued_work *work)
     /**
      * @brief We will try up to five times to connect to the peer and download the blocks
      * after five tries we will give up.
-     * 
+     *
      */
     int tries = 0;
     do
@@ -2407,9 +2434,9 @@ void giveme_network_initialize_connections()
 
 /**
  * @brief Returns the file size for the awaiting for transactions file if their was total_blocks provided
- * 
- * @param total_blocks 
- * @return size_t 
+ *
+ * @param total_blocks
+ * @return size_t
  */
 size_t giveme_network_my_awaiting_transactions_file_size(size_t total_blocks)
 {
@@ -2525,7 +2552,7 @@ int giveme_network_initialize_my_awaiting_transactions()
     }
 
     bool exists = file_exists(giveme_my_awaiting_transactions_path());
-    
+
     network.my_awaiting_transactions.fp = open(giveme_my_awaiting_transactions_path(), O_RDWR | O_CREAT, (mode_t)0600);
     size_t total_bytes = 0;
     if (exists)
@@ -2620,7 +2647,7 @@ struct shared_signed_data *giveme_tcp_packet_shared_signed_data(struct giveme_tc
 
 /**
  * Generates a random transaction ID and then signs this packet
- * @param packet 
+ * @param packet
  */
 int giveme_tcp_packet_sign(struct giveme_tcp_packet *packet)
 {
