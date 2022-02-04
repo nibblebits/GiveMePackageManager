@@ -127,7 +127,7 @@ struct block_transaction_new_package_data
     size_t size;
 };
 
-struct signed_data
+struct shared_signed_data
 {
     struct
     {
@@ -150,7 +150,7 @@ struct block_transaction
 
         // Data that must be signed by the creator of the transaction to prove
         // authentication
-        struct signed_data signed_data;
+        struct shared_signed_data shared_signed_data;
         union
         {
             struct block_transaction_new_package

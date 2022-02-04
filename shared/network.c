@@ -84,7 +84,7 @@ int giveme_network_create_transaction_for_packet(struct giveme_tcp_packet *packe
         res = -1;
         goto out;
     }
-    
+
     struct network_transaction **slot = giveme_network_find_network_transaction_slot();
     if (!slot)
     {
@@ -1243,14 +1243,14 @@ int giveme_network_handle_added_block(struct block *block)
         // Let's grab the ID of this target transaction and remove it from our awaiting transactions
         // since we have now processed it.
         struct network_awaiting_transaction *awaiting_transaction =
-            giveme_network_awaiting_transactions_get_by_packet_id(target_transaction->data.signed_data.data.id);
+            giveme_network_awaiting_transactions_get_by_packet_id(target_transaction->data.shared_signed_data.data.id);
         if (awaiting_transaction)
         {
             // We had an awaiting transaction for the block transaction.
             // Now we can confirm we have a block for this transaction
             // lets update the state
             awaiting_transaction->state = GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_SUCCESS;
-            giveme_log("%s resolved awaiting transaction with ID %i, block %s has resolved it\n", __FUNCTION__, target_transaction->data.signed_data.data.id, giveme_blockchain_block_hash(block));
+            giveme_log("%s resolved awaiting transaction with ID %i, block %s has resolved it\n", __FUNCTION__, target_transaction->data.shared_signed_data.data.id, giveme_blockchain_block_hash(block));
         }
 
         giveme_network_awaiting_transactions_unlock();
@@ -1622,7 +1622,7 @@ int giveme_network_create_block_transaction_for_network_transaction(struct netwo
     // We must copy the signed data from the network transaction to the block transaction
     // this will allow us to preserve important data signed by the creator
     // of the packet that made the network transaction
-    memcpy(&transaction_out->data.signed_data, &transaction->packet.data.signed_data, sizeof(transaction_out->data.signed_data));
+    memcpy(&transaction_out->data.shared_signed_data, &transaction->packet.data.shared_signed_data, sizeof(transaction_out->data.shared_signed_data));
     sha256_data(&transaction_out->data, transaction_out->hash, sizeof(transaction_out->data));
     return res;
 }
@@ -2613,9 +2613,9 @@ out:
     }
 }
 
-struct signed_data *giveme_tcp_packet_signed_data(struct giveme_tcp_packet *packet)
+struct shared_signed_data *giveme_tcp_packet_shared_signed_data(struct giveme_tcp_packet *packet)
 {
-    return &packet->data.signed_data;
+    return &packet->data.shared_signed_data;
 }
 
 /**
@@ -2625,34 +2625,34 @@ struct signed_data *giveme_tcp_packet_signed_data(struct giveme_tcp_packet *pack
 int giveme_tcp_packet_sign(struct giveme_tcp_packet *packet)
 {
     int res = 0;
-    packet->data.signed_data.data.id = rand() % 999999999;
+    packet->data.shared_signed_data.data.id = rand() % 999999999;
     char tmp_hash[SHA256_STRING_LENGTH];
-    sha256_data(&packet->data.signed_data.data, tmp_hash, sizeof(packet->data.signed_data.data));
-    res = private_sign_key_sig_hash(&packet->data.signed_data.signature, tmp_hash);
+    sha256_data(&packet->data.shared_signed_data.data, tmp_hash, sizeof(packet->data.shared_signed_data.data));
+    res = private_sign_key_sig_hash(&packet->data.shared_signed_data.signature, tmp_hash);
     if (res < 0)
     {
         giveme_log("%s failed to sign the packet with our private key\n", __FUNCTION__);
         goto out;
     }
 
-    packet->data.signed_data.is_signed = true;
+    packet->data.shared_signed_data.is_signed = true;
 out:
     return res;
 }
 
 int giveme_tcp_packet_id(struct giveme_tcp_packet *packet)
 {
-    if (!packet->data.signed_data.is_signed)
+    if (!packet->data.shared_signed_data.is_signed)
     {
         return -1;
     }
 
-    return packet->data.signed_data.data.id;
+    return packet->data.shared_signed_data.data.id;
 }
 
 bool giveme_tcp_packet_signed(struct giveme_tcp_packet *packet)
 {
-    return packet->data.signed_data.is_signed;
+    return packet->data.shared_signed_data.is_signed;
 }
 
 int giveme_tcp_packet_signature_verify(struct giveme_tcp_packet *packet)
@@ -2665,8 +2665,8 @@ int giveme_tcp_packet_signature_verify(struct giveme_tcp_packet *packet)
 
     int res = 0;
     char tmp_hash[SHA256_STRING_LENGTH];
-    sha256_data(&packet->data.signed_data.data, tmp_hash, sizeof(packet->data.signed_data.data));
-    if (public_verify_key_sig_hash(&packet->data.signed_data.signature, tmp_hash) < 0)
+    sha256_data(&packet->data.shared_signed_data.data, tmp_hash, sizeof(packet->data.shared_signed_data.data));
+    if (public_verify_key_sig_hash(&packet->data.shared_signed_data.signature, tmp_hash) < 0)
     {
         giveme_log("%s the packet was incorrectly signed.\n", __FUNCTION__);
         res = -1;

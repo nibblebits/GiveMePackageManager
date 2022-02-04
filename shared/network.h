@@ -164,7 +164,10 @@ struct giveme_tcp_packet
         int flags;
 
         // Data that must be signed to prove authentication
-        struct signed_data signed_data;
+        // This structure is special as it can be easily moved to other data structures
+        // and the signiage can be confirmed, where as if we was to do this on the packet
+        // the entire packet would have to be stored in other structures to confirm signing.
+        struct shared_signed_data shared_signed_data;
         union
         {
 
@@ -228,6 +231,7 @@ struct giveme_tcp_packet
     // THe public key who signed the data hash confirming its state.
     struct key pub_key;
     // The signature of the resulting sign.
+    // Note that this signature and public key is of the verifier
     struct signature sig;
 };
 
@@ -465,7 +469,7 @@ int giveme_network_awaiting_transaction_add(struct network_awaiting_transaction 
 void giveme_network_awaiting_transactions_lock();
 void giveme_network_awaiting_transactions_unlock();
 
-struct signed_data *giveme_tcp_packet_signed_data(struct giveme_tcp_packet *packet);
+struct shared_signed_data *giveme_tcp_packet_shared_signed_data(struct giveme_tcp_packet *packet);
 
 int giveme_network_download_package(const char *package_filehash, char *filename_out, size_t filename_size);
 /**
