@@ -458,9 +458,9 @@ int giveme_package_create(const char *path, const char *package_name)
 
     // Add this packet as an awaiting transaction.
     // It will be broadcast to everyone when appropiate until it successfully creates a transaction
-    giveme_network_awaiting_transactions_lock();
-    res = giveme_network_awaiting_transaction_add(&(struct network_awaiting_transaction){.packet=packet});
-    giveme_network_awaiting_transactions_unlock();
+    giveme_network_my_awaiting_transactions_lock();
+    res = giveme_network_my_awaiting_transaction_add(&(struct network_awaiting_transaction){.packet=packet});
+    giveme_network_my_awaiting_transactions_unlock();
 
     if (res < 0)
     {

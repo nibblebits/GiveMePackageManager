@@ -14,7 +14,7 @@
 #define GIVEME_DATA_BASE_DIRECTORY_ENV "HOME"
 #define GIVEME_BLOCKCHAIN_FILEPATH "/blockchain.bin"
 #define GIVEME_PACKAGES_PATH "/dpackages.bin"
-#define GIVEME_AWAITING_TRANSACTIONS_PATH "/awaiting-transactions.bin"
+#define GIVEME_MY_AWAITING_TRANSACTIONS_PATH "/awaiting-transactions.bin"
 
 #define GIVEME_PUBLIC_KEY_FILEPATH "/key.pub"
 #define GIVEME_PRIVATE_KEY_FILEPATH "/key.pri"

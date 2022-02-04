@@ -421,7 +421,7 @@ struct network
         size_t mem_total;
 
         pthread_mutex_t lock;
-    } awaiting_transactions;
+    } my_awaiting_transactions;
 
     // Locked when preforming TCP actions that must not conflict such as modiying
     // the connection array
@@ -465,9 +465,9 @@ int giveme_network_connection_thread_start();
 int giveme_network_process_thread_start();
 void giveme_network_broadcast(struct giveme_tcp_packet *packet);
 void giveme_network_update_chain();
-int giveme_network_awaiting_transaction_add(struct network_awaiting_transaction *transaction);
-void giveme_network_awaiting_transactions_lock();
-void giveme_network_awaiting_transactions_unlock();
+int giveme_network_my_awaiting_transaction_add(struct network_awaiting_transaction *transaction);
+void giveme_network_my_awaiting_transactions_lock();
+void giveme_network_my_awaiting_transactions_unlock();
 
 struct shared_signed_data *giveme_tcp_packet_shared_signed_data(struct giveme_tcp_packet *packet);
 

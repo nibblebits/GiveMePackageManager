@@ -1184,40 +1184,40 @@ void giveme_network_clear_network_transactions_of_block(struct block *block)
     giveme_network_clear_transactions(&network.transactions);
 }
 
-void giveme_network_awaiting_transactions_remove_succeeded()
+void giveme_network_my_awaiting_transactions_remove_succeeded()
 {
-    for (int i = 0; i < network.awaiting_transactions.mem_total; i++)
+    for (int i = 0; i < network.my_awaiting_transactions.mem_total; i++)
     {
         // We don't care about packets that are not awaiting transactions
         // these are free slots... get rid of them.
         struct network_awaiting_transaction blank_transaction = {};
-        if (memcmp(&blank_transaction, &network.awaiting_transactions.data[i], sizeof(blank_transaction)) == 0)
+        if (memcmp(&blank_transaction, &network.my_awaiting_transactions.data[i], sizeof(blank_transaction)) == 0)
         {
             continue;
         }
 
-        struct network_awaiting_transaction *transaction = &network.awaiting_transactions.data[i];
+        struct network_awaiting_transaction *transaction = &network.my_awaiting_transactions.data[i];
         if (transaction->state == GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_SUCCESS)
         {
             memcpy(transaction, &blank_transaction, sizeof(struct network_awaiting_transaction));
-            network.awaiting_transactions.total--;
+            network.my_awaiting_transactions.total--;
         }
     }
 }
 
-struct network_awaiting_transaction *giveme_network_awaiting_transactions_get_by_packet_id(int id)
+struct network_awaiting_transaction *giveme_network_my_awaiting_transactions_get_by_packet_id(int id)
 {
-    for (int i = 0; i < network.awaiting_transactions.mem_total; i++)
+    for (int i = 0; i < network.my_awaiting_transactions.mem_total; i++)
     {
         // We don't care about packets that are not awaiting transactions
         // these are free slots... get rid of them.
         struct network_awaiting_transaction blank_transaction = {};
-        if (memcmp(&blank_transaction, &network.awaiting_transactions.data[i], sizeof(blank_transaction)) == 0)
+        if (memcmp(&blank_transaction, &network.my_awaiting_transactions.data[i], sizeof(blank_transaction)) == 0)
         {
             continue;
         }
 
-        struct network_awaiting_transaction *transaction = &network.awaiting_transactions.data[i];
+        struct network_awaiting_transaction *transaction = &network.my_awaiting_transactions.data[i];
         if (giveme_tcp_packet_id(&transaction->packet) == id)
         {
             return transaction;
@@ -1239,11 +1239,11 @@ int giveme_network_handle_added_block(struct block *block)
         }
 
         struct block_transaction *target_transaction = &block->data.transactions.transactions[i];
-        giveme_network_awaiting_transactions_lock();
+        giveme_network_my_awaiting_transactions_lock();
         // Let's grab the ID of this target transaction and remove it from our awaiting transactions
         // since we have now processed it.
         struct network_awaiting_transaction *awaiting_transaction =
-            giveme_network_awaiting_transactions_get_by_packet_id(target_transaction->data.shared_signed_data.data.id);
+            giveme_network_my_awaiting_transactions_get_by_packet_id(target_transaction->data.shared_signed_data.data.id);
         if (awaiting_transaction)
         {
             // We had an awaiting transaction for the block transaction.
@@ -1253,7 +1253,7 @@ int giveme_network_handle_added_block(struct block *block)
             giveme_log("%s resolved awaiting transaction with ID %i, block %s has resolved it\n", __FUNCTION__, target_transaction->data.shared_signed_data.data.id, giveme_blockchain_block_hash(block));
         }
 
-        giveme_network_awaiting_transactions_unlock();
+        giveme_network_my_awaiting_transactions_unlock();
     }
 }
 int giveme_network_packet_handle_verified_block(struct giveme_tcp_packet *packet, struct network_connection *connection)
@@ -2411,78 +2411,78 @@ void giveme_network_initialize_connections()
  * @param total_blocks 
  * @return size_t 
  */
-size_t giveme_network_awaiting_transactions_file_size(size_t total_blocks)
+size_t giveme_network_my_awaiting_transactions_file_size(size_t total_blocks)
 {
     return total_blocks * sizeof(struct network_awaiting_transaction);
 }
 
-size_t giveme_network_awaiting_transactions_count_for_size(size_t filesize)
+size_t giveme_network_my_awaiting_transactions_count_for_size(size_t filesize)
 {
     return filesize / sizeof(struct network_awaiting_transaction);
 }
 
-char *giveme_awaiting_transactions_path()
+char *giveme_my_awaiting_transactions_path()
 {
     static char awaiting_for_block_path[PATH_MAX];
-    sprintf(awaiting_for_block_path, "%s/%s/%s", getenv(GIVEME_DATA_BASE_DIRECTORY_ENV), GIVEME_DATA_BASE, GIVEME_AWAITING_TRANSACTIONS_PATH);
+    sprintf(awaiting_for_block_path, "%s/%s/%s", getenv(GIVEME_DATA_BASE_DIRECTORY_ENV), GIVEME_DATA_BASE, GIVEME_MY_AWAITING_TRANSACTIONS_PATH);
     return awaiting_for_block_path;
 }
 
-struct network_awaiting_transaction *giveme_network_awaiting_transaction_find_free_slot()
+struct network_awaiting_transaction *giveme_network_my_awaiting_transaction_find_free_slot()
 {
-    for (int i = 0; i < network.awaiting_transactions.mem_total; i++)
+    for (int i = 0; i < network.my_awaiting_transactions.mem_total; i++)
     {
         struct network_awaiting_transaction blank_packet = {};
-        if (memcmp(&blank_packet, &network.awaiting_transactions.data[i], sizeof(blank_packet)) == 0)
+        if (memcmp(&blank_packet, &network.my_awaiting_transactions.data[i], sizeof(blank_packet)) == 0)
         {
-            return &network.awaiting_transactions.data[i];
+            return &network.my_awaiting_transactions.data[i];
         }
     }
 
     return NULL;
 }
 
-int giveme_network_awaiting_transactions_resize()
+int giveme_network_my_awaiting_transactions_resize()
 {
-    size_t new_block_count = network.awaiting_transactions.mem_total + GIVEME_AWAITING_FOR_BLOCK_MINIMUM_BLOCK_SIZE;
-    size_t new_file_size = giveme_network_awaiting_transactions_file_size(new_block_count);
-    munmap(network.awaiting_transactions.data, giveme_network_awaiting_transactions_file_size(network.awaiting_transactions.mem_total));
-    ftruncate(network.awaiting_transactions.fp, new_file_size);
-    network.awaiting_transactions.data = mmap(0, new_file_size, PROT_READ | PROT_WRITE, MAP_SHARED, network.awaiting_transactions.fp, 0);
-    if (network.awaiting_transactions.data == MAP_FAILED)
+    size_t new_block_count = network.my_awaiting_transactions.mem_total + GIVEME_AWAITING_FOR_BLOCK_MINIMUM_BLOCK_SIZE;
+    size_t new_file_size = giveme_network_my_awaiting_transactions_file_size(new_block_count);
+    munmap(network.my_awaiting_transactions.data, giveme_network_my_awaiting_transactions_file_size(network.my_awaiting_transactions.mem_total));
+    ftruncate(network.my_awaiting_transactions.fp, new_file_size);
+    network.my_awaiting_transactions.data = mmap(0, new_file_size, PROT_READ | PROT_WRITE, MAP_SHARED, network.my_awaiting_transactions.fp, 0);
+    if (network.my_awaiting_transactions.data == MAP_FAILED)
     {
         giveme_log("%s Failed to map our awaiting transactions file into memory\n", __FUNCTION__);
         return -1;
     }
 
-    network.awaiting_transactions.mem_total = new_block_count;
+    network.my_awaiting_transactions.mem_total = new_block_count;
     return 0;
 }
 
-void giveme_network_awaiting_transactions_lock()
+void giveme_network_my_awaiting_transactions_lock()
 {
-    pthread_mutex_lock(&network.awaiting_transactions.lock);
+    pthread_mutex_lock(&network.my_awaiting_transactions.lock);
 }
 
-void giveme_network_awaiting_transactions_unlock()
+void giveme_network_my_awaiting_transactions_unlock()
 {
-    pthread_mutex_unlock(&network.awaiting_transactions.lock);
+    pthread_mutex_unlock(&network.my_awaiting_transactions.lock);
 }
 
-int giveme_network_awaiting_transaction_add(struct network_awaiting_transaction *transaction)
+int giveme_network_my_awaiting_transaction_add(struct network_awaiting_transaction *transaction)
 {
     int res = 0;
     transaction->state = GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_PENDING;
-    struct network_awaiting_transaction *available_slot = giveme_network_awaiting_transaction_find_free_slot();
+    struct network_awaiting_transaction *available_slot = giveme_network_my_awaiting_transaction_find_free_slot();
     if (!available_slot)
     {
-        res = giveme_network_awaiting_transactions_resize();
+        res = giveme_network_my_awaiting_transactions_resize();
         if (res < 0)
         {
             goto out;
         }
 
-        available_slot = giveme_network_awaiting_transaction_find_free_slot();
+        available_slot = giveme_network_my_awaiting_transaction_find_free_slot();
         if (!available_slot)
         {
             res = -1;
@@ -2494,7 +2494,7 @@ int giveme_network_awaiting_transaction_add(struct network_awaiting_transaction 
     memcpy(available_slot, transaction, sizeof(struct network_awaiting_transaction));
 
     // Let's increment the total avaialble
-    network.awaiting_transactions.total++;
+    network.my_awaiting_transactions.total++;
 out:
     // Okay we added the awaiting transaction but we are not done
     // broadcast the packet for first time discovery
@@ -2502,13 +2502,13 @@ out:
     return res;
 }
 
-size_t giveme_network_count_awaiting_transactions()
+size_t giveme_network_count_my_awaiting_transactions()
 {
     size_t count = 0;
-    for (int i = 0; i < network.awaiting_transactions.mem_total; i++)
+    for (int i = 0; i < network.my_awaiting_transactions.mem_total; i++)
     {
         struct network_awaiting_transaction blank_transaction = {};
-        if (memcmp(&blank_transaction, &network.awaiting_transactions.data[i], sizeof(struct network_awaiting_transaction)) != 0)
+        if (memcmp(&blank_transaction, &network.my_awaiting_transactions.data[i], sizeof(struct network_awaiting_transaction)) != 0)
         {
             count++;
         }
@@ -2516,38 +2516,38 @@ size_t giveme_network_count_awaiting_transactions()
     return count;
 }
 
-int giveme_network_initialize_awaiting_transactions()
+int giveme_network_initialize_my_awaiting_transactions()
 {
-    if (pthread_mutex_init(&network.awaiting_transactions.lock, NULL) != 0)
+    if (pthread_mutex_init(&network.my_awaiting_transactions.lock, NULL) != 0)
     {
-        giveme_log("Failed to initialize awaiting_transactions mutex\n");
+        giveme_log("Failed to initialize my_awaiting_transactions mutex\n");
         return -1;
     }
 
-    bool exists = file_exists(giveme_awaiting_transactions_path());
+    bool exists = file_exists(giveme_my_awaiting_transactions_path());
     
-    network.awaiting_transactions.fp = open(giveme_awaiting_transactions_path(), O_RDWR | O_CREAT, (mode_t)0600);
+    network.my_awaiting_transactions.fp = open(giveme_my_awaiting_transactions_path(), O_RDWR | O_CREAT, (mode_t)0600);
     size_t total_bytes = 0;
     if (exists)
     {
         struct stat s;
-        fstat(network.awaiting_transactions.fp, &s);
+        fstat(network.my_awaiting_transactions.fp, &s);
         total_bytes = s.st_size;
     }
     if (!exists)
     {
-        total_bytes = giveme_network_awaiting_transactions_file_size(GIVEME_AWAITING_FOR_BLOCK_MINIMUM_BLOCK_SIZE);
-        ftruncate(network.awaiting_transactions.fp, total_bytes);
+        total_bytes = giveme_network_my_awaiting_transactions_file_size(GIVEME_AWAITING_FOR_BLOCK_MINIMUM_BLOCK_SIZE);
+        ftruncate(network.my_awaiting_transactions.fp, total_bytes);
     }
-    network.awaiting_transactions.data = mmap(0, total_bytes, PROT_READ | PROT_WRITE, MAP_SHARED, network.awaiting_transactions.fp, 0);
+    network.my_awaiting_transactions.data = mmap(0, total_bytes, PROT_READ | PROT_WRITE, MAP_SHARED, network.my_awaiting_transactions.fp, 0);
 
-    if (network.awaiting_transactions.data == MAP_FAILED)
+    if (network.my_awaiting_transactions.data == MAP_FAILED)
     {
         giveme_log("%s Failed to map our awaiting transactions file into memory\n", __FUNCTION__);
         return -1;
     }
-    network.awaiting_transactions.mem_total = giveme_network_awaiting_transactions_count_for_size(total_bytes);
-    network.awaiting_transactions.total = giveme_network_count_awaiting_transactions();
+    network.my_awaiting_transactions.mem_total = giveme_network_my_awaiting_transactions_count_for_size(total_bytes);
+    network.my_awaiting_transactions.total = giveme_network_count_my_awaiting_transactions();
 
     return 0;
 }
@@ -2579,7 +2579,7 @@ void giveme_network_initialize()
         goto out;
     }
 
-    res = giveme_network_initialize_awaiting_transactions();
+    res = giveme_network_initialize_my_awaiting_transactions();
     if (res < 0)
     {
         goto out;
