@@ -55,6 +55,7 @@ int main(int argc, char *argv[])
 	initialize(mine_genesis);
 	giveme_thread_pool_start();
 	giveme_network_listen();
+	giveme_network_upnp_port_forward();
 	giveme_network_connection_thread_start();
 	giveme_network_process_thread_start();
 	giveme_af_unix_listen();

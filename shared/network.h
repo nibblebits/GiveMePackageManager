@@ -457,6 +457,8 @@ struct network
     // Vector of struct network_package_download*
     struct vector *downloads;
     pthread_mutex_t downloads_lock;
+
+    time_t last_upnp_forward;
 };
 
 void giveme_network_initialize();
@@ -513,5 +515,7 @@ bool giveme_tcp_packet_signed(struct giveme_tcp_packet *packet);
  * @return Returns 0 on signature validation being success otherwise a negative value.
  */
 int giveme_tcp_packet_signature_verify(struct giveme_tcp_packet *packet);
+
+void giveme_network_upnp_port_forward();
 
 #endif

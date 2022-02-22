@@ -29,6 +29,7 @@
 #include "misc.h"
 #include "package.h"
 #include "blockchain.h"
+#include "upnp.h"
 
 struct network network;
 int giveme_network_accept_thread(struct queued_work *work);
@@ -2343,10 +2344,21 @@ out:
     return 0;
 }
 
+bool giveme_network_time_to_forward_ports()
+{
+    // Every hour we forward the ports again
+    return (time(NULL) - network.last_upnp_forward) > 3600;
+}
+
 int giveme_network_process_thread(struct queued_work *work)
 {
     while (1)
     {
+        if (giveme_network_time_to_forward_ports())
+        {
+            giveme_network_upnp_port_forward();
+        }
+
         // Kept getting issues with lock order. We will lock in the actual loop
         // this may result in slower operations than expected.
         giveme_lock_chain();
@@ -2700,4 +2712,12 @@ int giveme_tcp_packet_signature_verify(struct giveme_tcp_packet *packet)
     }
 
     return res;
+}
+
+void giveme_network_upnp_port_forward()
+{
+    // Let's open ourselves up to the world
+    upnp_redirect(GIVEME_TCP_PORT, GIVEME_TCP_PORT);
+    upnp_redirect(GIVEME_TCP_DATA_EXCHANGE_PORT, GIVEME_TCP_DATA_EXCHANGE_PORT);
+    network.last_upnp_forward = time(NULL);
 }

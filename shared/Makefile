@@ -1,4 +1,4 @@
-OBJECTS=./build/log.o ./build/af_unix_network.o ./build/network.o ./build/blockchain.o ./build/package.o ./build/sha256.o ./build/tpool.o ./build/key.o ./build/misc.o ./build/vector.o ./build/givemezip.o
+OBJECTS=./build/log.o ./build/af_unix_network.o ./build/network.o ./build/blockchain.o ./build/package.o ./build/sha256.o ./build/tpool.o ./build/key.o ./build/misc.o ./build/vector.o ./build/givemezip.o ./build/upnp.o
 INCLUDES= -I ./
 ADDITIONAL_FLAGS= -g
 all: ${OBJECTS}
@@ -37,6 +37,9 @@ all: ${OBJECTS}
 
 ./build/givemezip.o:./givemezip.c
 	gcc ${INCLUDES} ./givemezip.c -c ${ADDITIONAL_FLAGS} -o ./build/givemezip.o 
+
+./build/upnp.o:./upnp.c
+	gcc ${INCLUDES} ./upnp.c -c ${ADDITIONAL_FLAGS} -o ./build/upnp.o 
 
 clean:
 	rm -rf ${OBJECTS}

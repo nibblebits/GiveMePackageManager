@@ -9,6 +9,9 @@
         "typeinfo": "c",
         "blockchain.h": "c",
         "string_view": "c",
-        "un.h": "c"
+        "un.h": "c",
+        "upnp.h": "c",
+        "natpmp.h": "c",
+        "upnpcommands.h": "c"
     }
 }
