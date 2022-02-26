@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdbool.h>
 #include <miniupnpc/miniupnpc.h>
 #include <miniupnpc/miniwget.h>
 #include <miniupnpc/upnpcommands.h>
@@ -17,6 +18,26 @@
 
 #include "log.h"
 
+
+/**
+ * @brief We currently determine a valid IP address to be an IP 
+ * that is starting with 192.
+ * 
+ * This could be done a lot better.. such as checking we are on the right network interface
+ * rather than relying on checking IP addresses.
+ * @param ip 
+ * @return true 
+ * @return false 
+ */
+bool upnp_ip_valid_for_forward(const char* ip)
+{
+    if (ip[0] == '1' && ip[1] == '2')
+    {
+        return false;
+    }
+
+    return ip[0] != '0';
+}
 
 int interface_my_ip_find(char *addr_out)
 {
@@ -59,7 +80,7 @@ int interface_my_ip_find(char *addr_out)
         // 127.0.0.1 and 0.0.0.0 .. THis is not a clever way to resolve the local IP
         // and there are better ways, but this is a fail safe in the event
         // UPNP fails on us..
-        if (isdigit(ip[0]) && ip[0] != '0' && ip[0] != '1')
+        if (upnp_ip_valid_for_forward(ip))
         {
             strncpy(addr_out, ip, sizeof(ip));
             res = 0;
