@@ -180,4 +180,13 @@ size_t giveme_package_total_chunks(struct package* package);
 
 off_t giveme_package_file_offset_for_chunk(struct package *package, off_t chunk_index);
 
+
+/**
+ * @brief Adds a new IP address where the package can be found.
+ * 
+ * @param package 
+ * @param ip 
+ * @return int 
+ */
+int giveme_packages_add_ip_address(struct package *package, const char *ip);
 #endif

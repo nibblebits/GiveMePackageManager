@@ -87,4 +87,7 @@
 #define GIVEME_MAX_RELAYED_PACKET_ELEMENTS 100
 
 #define GIVEME_AWAITING_FOR_BLOCK_MINIMUM_BLOCK_SIZE 24
+
+// We can tip a maximum of four people who assisted in us downloading a file from.
+#define GIVEME_MAX_TIPS_PER_DOWNLOAD 4
 #endif

@@ -21,7 +21,7 @@
 
 // Holds the last 10000 blocks any further back we need to go we will need to
 // load from the database
-//struct vector *memory_blockchain;
+// struct vector *memory_blockchain;
 
 // Memory mapped pointer to the blockchain
 struct blockchain blockchain;
@@ -429,6 +429,30 @@ void giveme_blockchain_handle_added_block_transaction_new_package(struct block *
     }
 }
 
+void giveme_blockchain_handle_added_block_transaction_package_downloaded(struct block *block, struct block_transaction *transaction)
+{
+    int res = 0;
+    giveme_log("%s new package download transaction\n", __FUNCTION__);
+    struct block_transaction_downloaded_package_data* signed_data = &transaction->data.shared_signed_data.data.downloaded_package.data;
+    const char* ip_address = transaction->data.downloaded_package.ip_address;
+    // This check should be done somewhere else..
+    char safe_ip[GIVEME_IP_STRING_SIZE] = {};
+    strncpy(safe_ip, ip_address, sizeof(safe_ip));
+    struct package* package = giveme_package_get_by_filehash(signed_data->filehash);
+    if (!package)
+    {
+        giveme_log("%s the given package with the filehash %s could not be located\n", __FUNCTION__);
+        return;
+    }
+    res = giveme_packages_add_ip_address(package, safe_ip);
+    if (res < 0)
+    {
+        giveme_log("%s failed to add the IP address to known peers who hold the package\n", __FUNCTION__);
+        return;
+    }
+
+}
+
 void giveme_blockchain_handle_added_block(struct block *block)
 {
     giveme_log("%s handling block with %i transactions.\n", __FUNCTION__, block->data.transactions.total);
@@ -447,6 +471,10 @@ void giveme_blockchain_handle_added_block(struct block *block)
 
         case BLOCK_TRANSACTION_TYPE_NEW_PACKAGE:
             giveme_blockchain_handle_added_block_transaction_new_package(block, transaction);
+            break;
+
+        case BLOCK_TRANSACTION_TYPE_DOWNLOADED_PACKAGE:
+            giveme_blockchain_handle_added_block_transaction_package_downloaded(block, transaction);
             break;
         }
         if (key_cmp(&block->signature.key, key))
@@ -627,8 +655,37 @@ void giveme_blockchain_initialize(bool mine_genesis)
     giveme_blockchain_cache_reload();
 }
 
+bool giveme_block_transaction_has_signed_data(struct block_transaction *transaction)
+{
+    return transaction->data.shared_signed_data.is_signed;
+}
+int giveme_verify_signed_data(struct shared_signed_data *data)
+{
+    // Verify success if theirs no signature..
+    if (!data->is_signed)
+    {
+        return 0;
+    }
+
+    // We have signed data??? Then lets verify the signature.
+    char tmp_hash[SHA256_STRING_LENGTH];
+    sha256_data(data, tmp_hash, sizeof(data->data));
+    if (public_verify_key_sig_hash(&data->signature, tmp_hash) < 0)
+    {
+        giveme_log("%s the packet was incorrectly signed.\n", __FUNCTION__);
+        return -1;
+    }
+
+    return 0;
+}
 int giveme_block_verify_transaction(struct block *block, struct block_transaction *transaction)
 {
+    int res = giveme_verify_signed_data(&transaction->data.shared_signed_data);
+    if (res < 0)
+    {
+        return res;
+    }
+
     if (transaction->data.type == BLOCK_TRANSACTION_TYPE_NEW_PACKAGE)
     {
         char tmp_hash[SHA256_STRING_LENGTH];

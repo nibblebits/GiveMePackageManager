@@ -105,16 +105,6 @@ enum
     BLOCK_TRANSACTION_TYPE_NEW_KEY,
 };
 
-struct block_transaction_downloaded_package_data
-{
-    // The hash of the transaction that created the package we are downloading
-    char hash[SHA256_STRING_LENGTH];
-    // The IP address of the person who downloaded the package so people downloading this package can find us.
-    char ip_address[GIVEME_IP_STRING_SIZE];
-
-    // The key of the person you downloaded the package from.
-    struct key provider_key;
-};
 
 struct block_transaction_new_package_data
 {
@@ -127,6 +117,26 @@ struct block_transaction_new_package_data
     size_t size;
 };
 
+struct block_transaction_downloaded_package_tip
+{
+    // Public key of the receiver of this tip.
+    struct key pub_key;
+    // Coin amount for the tip. 
+    // Default clients will automatically use 0.05 as a tip if they have a balance on the account
+    // otherwise the package download is free.
+    double amount;
+};
+
+struct block_transaction_downloaded_package_data
+{
+    // The filehash of the file that was downloaded.
+    char filehash[SHA256_STRING_LENGTH];
+    
+    // When you download a package you may be able to tip the person you downloaded from
+    // this encourages people to hold files they arent using..
+    struct block_transaction_downloaded_package_tip tips[GIVEME_MAX_TIPS_PER_DOWNLOAD];
+};
+
 struct shared_signed_data
 {
     struct
@@ -135,6 +145,15 @@ struct shared_signed_data
         // This identifier is only guaranteed to be unique per block creation
         // it is used to identify later on which packet made a transaction
         int id;
+
+        union
+        {
+            struct shared_signed_data_downloaded_package
+            {
+                struct block_transaction_downloaded_package_data data;
+            } downloaded_package; 
+        };
+        
     } data;
     struct key_signature_hash signature;
     // True if the packet is signed. If we have a signed packet it must pass
@@ -170,10 +189,11 @@ struct block_transaction
 
             struct block_transaction_downloaded_package
             {
-                // Data signed with the signature below.
-                struct block_transaction_downloaded_package_data data;
-                struct key_signature_hash signature;
 
+                // The IP address of the peer who now has the file.
+                // DYnamic IP addresses change frequnetly which can be a problem
+                // therefore we need a mechnism later on to be able to change the IP address.
+                char ip_address[GIVEME_IP_STRING_SIZE];
             } downloaded_package;
 
             struct block_transaction_new_key
@@ -236,6 +256,7 @@ struct blockchain_individual *giveme_blockchain_me();
 
 void giveme_lock_chain();
 void giveme_unlock_chain();
+int giveme_verify_signed_data(struct shared_signed_data *data);
 int giveme_block_verify(struct block *block) NO_THREAD_SAFETY;
 int giveme_block_verify_for_chain(struct blockchain *chain, struct block *block) NO_THREAD_SAFETY;
 int giveme_blockchain_add_block(struct block *block) NO_THREAD_SAFETY;

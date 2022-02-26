@@ -919,6 +919,8 @@ void giveme_network_disconnect(struct network_connection *connection)
 
 void giveme_network_relayed_packet_push(struct giveme_tcp_packet *packet)
 {
+    // Note that this does not push the pointer, the memory is copied to an element
+    // in the vector.
     vector_push(network.relayed_packets, packet);
 }
 
@@ -1265,7 +1267,7 @@ void giveme_network_rebroadcast_my_pending_transactions()
     for (int i = 0; i < network.my_awaiting_transactions.mem_total; i++)
     {
         struct network_awaiting_transaction blank_transaction = {};
-        struct network_awaiting_transaction* transaction = &network.my_awaiting_transactions.data[i];
+        struct network_awaiting_transaction *transaction = &network.my_awaiting_transactions.data[i];
         if (memcmp(transaction, &blank_transaction, sizeof(blank_transaction)) == 0)
         {
             continue;
@@ -1520,6 +1522,31 @@ void giveme_network_packet_handle_ping(struct giveme_tcp_packet *packet, struct 
     memcpy(connection->data->block_hash, packet->data.ping.last_hash, sizeof(connection->data->block_hash));
 }
 
+void giveme_network_packet_handle_downloaded_package(struct giveme_tcp_packet *packet, struct network_connection *connection)
+{
+    // Someone has signified they have downlaoded a package and wants
+    // to become apart of the peer pool in exchange for money tips..
+    // Let's ensure this is added to the chain and known by all peers.
+
+    // If the IP address provided is NULL then we can assume
+    // the current peer is the one who downloaded the package
+    // set the IP address and relay to all peers.
+    if (!packet->data.downloaded_package.ip_address[0])
+    {
+        // No IP address was provided therefore we must set it.
+        strncpy(packet->data.downloaded_package.ip_address, giveme_connection_ip(connection), sizeof(packet->data.downloaded_package.ip_address));
+    }
+    int res = giveme_network_create_transaction_for_packet(packet);
+    if (res < 0)
+    {
+        giveme_log("%s problem creating transaction for the downloaded package request\n", __FUNCTION__);
+        return;
+    }
+
+    // Lets relay the packet to all known peers.
+    giveme_network_relay(packet);
+}
+
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     // Is the packet signed? If so we need to verify its signed correctly
@@ -1560,6 +1587,10 @@ void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct netw
 
     case GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE:
         giveme_network_packet_handle_update_chain_response(packet, connection);
+        break;
+
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE:
+        giveme_network_packet_handle_downloaded_package(packet, connection);
         break;
     }
 }
@@ -1624,6 +1655,13 @@ int giveme_network_create_block_transaction_for_network_transaction_new_package(
     return 0;
 }
 
+int giveme_network_create_block_transaction_for_network_transaction_downloaded_package(struct network_transaction *transaction, struct block_transaction *transaction_out)
+{
+    transaction_out->data.type = BLOCK_TRANSACTION_TYPE_DOWNLOADED_PACKAGE;
+    strncpy(transaction_out->data.downloaded_package.ip_address, transaction->packet.data.downloaded_package.ip_address, sizeof(transaction_out->data.downloaded_package.ip_address));
+    return 0;
+}
+
 int giveme_network_create_block_transaction_for_network_transaction(struct network_transaction *transaction, struct block_transaction *transaction_out)
 {
     int res = 0;
@@ -1636,6 +1674,9 @@ int giveme_network_create_block_transaction_for_network_transaction(struct netwo
         res = giveme_network_create_block_transaction_for_network_transaction_new_package(transaction, transaction_out);
         break;
 
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE:
+        res = giveme_network_create_block_transaction_for_network_transaction_downloaded_package(transaction, transaction_out);
+        break;
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY:
         transaction_out->data.type = BLOCK_TRANSACTION_TYPE_NEW_KEY;
         strncpy(transaction_out->data.publish_public_key.name, transaction->packet.data.publish_public_key.name, sizeof(transaction_out->data.publish_public_key.name));
@@ -2053,6 +2094,31 @@ void giveme_network_download_add_peer(struct network_package_download *download,
     vector_push(download->info.connections.peers, &peer);
 }
 
+int giveme_network_package_downloaded(const char *filehash)
+{
+    int res = 0;
+    struct giveme_tcp_packet packet = {};
+    packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE;
+    struct block_transaction_downloaded_package_data *downloaded_package_data =
+        &packet.data.shared_signed_data.data.downloaded_package.data;
+    strncpy(downloaded_package_data->filehash, filehash, sizeof(downloaded_package_data->filehash));
+
+    // Apply money tips here... TODO..
+
+    res = giveme_tcp_packet_sign(&packet);
+    if (res < 0)
+    {
+        giveme_log("%s failed to sign our package_downloaded TCP packet...\n", __FUNCTION__);
+        goto out;
+    }
+
+    // Let's broadcast this downloaded package packet.
+    giveme_network_broadcast(&packet);
+
+out:
+    return res;
+}
+
 int giveme_network_download_package(const char *package_filehash, char *filename_out, size_t filename_size)
 {
     struct network_package_download *download = NULL;
@@ -2146,6 +2212,12 @@ int giveme_network_download_package(const char *package_filehash, char *filename
     strncpy(filename_out, package_path, filename_size);
     strncpy(package->downloaded.filepath, package_path, sizeof(package->downloaded.filepath));
     package->downloaded.yes = true;
+    int r = giveme_network_package_downloaded(package->details.filehash);
+    if (r < 0)
+    {
+        giveme_log("%s package was downloaded successfully but we failed to transmit a downloaded packet, so that other peers can download this package from us in the future\n", __FUNCTION__);
+    }
+
 out:
     if (download)
     {
@@ -2703,14 +2775,14 @@ int giveme_tcp_packet_signature_verify(struct giveme_tcp_packet *packet)
     }
 
     int res = 0;
-    char tmp_hash[SHA256_STRING_LENGTH];
-    sha256_data(&packet->data.shared_signed_data.data, tmp_hash, sizeof(packet->data.shared_signed_data.data));
-    if (public_verify_key_sig_hash(&packet->data.shared_signed_data.signature, tmp_hash) < 0)
+    res = giveme_verify_signed_data(&packet->data.shared_signed_data);
+    if (res < 0)
     {
         giveme_log("%s the packet was incorrectly signed.\n", __FUNCTION__);
         res = -1;
+        goto out;
     }
-
+out:
     return res;
 }
 

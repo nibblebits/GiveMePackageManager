@@ -153,6 +153,7 @@ enum
     GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK,
     GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN,
     GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE,
+    GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE,
 };
 
 struct block block;
@@ -187,6 +188,23 @@ struct giveme_tcp_packet
                 // The public key and signature to verify this public key signed the given data.
                 struct key_signature_hash signature;
             } publish_package;
+
+            /**
+             * @brief When a peer downloads a package his IP address is added to a downloaded_package
+             * packet so that it can be published to the block chain, so it becomes apart
+             * of the nodes who hold this package.
+             */
+            struct giveme_tcp_packet_package_downloaded
+            {
+                // see shared_signed_data for signed data associated to this transaction
+                
+                // The IP address of the peer who now has the file.
+                // DYnamic IP addresses change frequnetly which can be a problem
+                // therefore we need a mechnism later on to be able to change the IP address.
+                // If the IP is NULL then the receiver of the packet needs to set it
+                // to the IP address of the peer who sent us the packet
+                char ip_address[GIVEME_IP_STRING_SIZE];
+            } downloaded_package;
 
             struct giveme_tcp_packet_publish_key
             {
