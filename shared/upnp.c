@@ -200,6 +200,7 @@ int upnp_redirect(int localPort, int publicPort)
         struct UPNPUrls urls;
         struct IGDdatas data;
         char lanaddr[64] = {};
+        char externalIpAddress[40] = {};
 
         int i = UPNP_GetValidIGD(devlist, &urls, &data, lanaddr, sizeof(lanaddr));
         if (i < 0)
@@ -217,12 +218,23 @@ int upnp_redirect(int localPort, int publicPort)
             goto out;
         }
 
+        i = UPNP_GetExternalIPAddress(urls.controlURL,
+	                          data.first.servicetype,
+							  externalIpAddress);
+        if (i < 0)
+        {
+            giveme_log("%s failed to find our external IP address. We can't UPNP without that\n", __FUNCTION__);
+            res = -1;
+            goto out;
+        }
+
+
         char port_l[6] = {0};
         char port_p[6] = {0};
         sprintf(port_l, "%i", localPort);
         sprintf(port_p, "%i", publicPort);
 
-        SetRedirectAndTest(&urls, &data, lanaddr, port_l, port_p, "tcp", "14400", "", "Rhythm Network", 0);
+        SetRedirectAndTest(&urls, &data, lanaddr, port_l, port_p, "tcp", "14400",externalIpAddress, "Rhythm Network", 0);
         FreeUPNPUrls(&urls);
     }
 
