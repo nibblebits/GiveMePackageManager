@@ -234,7 +234,7 @@ int upnp_redirect(int localPort, int publicPort)
         sprintf(port_l, "%i", localPort);
         sprintf(port_p, "%i", publicPort);
 
-        SetRedirectAndTest(&urls, &data, lanaddr, port_l, port_p, "tcp", "14400",externalIpAddress, "Rhythm Network", 0);
+        SetRedirectAndTest(&urls, &data, lanaddr, port_l, port_p, "tcp", "14400","", "Rhythm Network", 0);
         FreeUPNPUrls(&urls);
     }
 
