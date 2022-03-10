@@ -540,7 +540,7 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
 {
     int res = 0;
     size_t amount_left = amount;
-    while (amount_left != 0)
+    while (amount_left > 0)
     {
         res = write(client, ptr, amount_left);
         if (res < 0)
@@ -569,7 +569,7 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
         return -1;
     }
 
-    while (amount_left != 0)
+    while (amount_left > 0)
     {
         res = recv(client, ptr, amount_left, MSG_WAITALL);
         if (res < 0)
@@ -1162,7 +1162,6 @@ void giveme_network_update_known_hashes()
 
 void giveme_network_ping()
 {
-    sizeof(struct block);
     struct giveme_tcp_packet packet = {};
     packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PING;
 
