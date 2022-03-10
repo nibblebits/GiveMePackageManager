@@ -497,7 +497,7 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
     size_t amount_left = amount;
     while (amount_left != 0)
     {
-        res = write(client, ptr, amount);
+        res = write(client, ptr, amount_left);
         if (res < 0)
         {
             giveme_log("%s issue sending bytes err=%i\n", __FUNCTION__, errno);
@@ -526,7 +526,7 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
 
     while (amount_left != 0)
     {
-        res = recv(client, ptr, amount, MSG_WAITALL);
+        res = recv(client, ptr, amount_left, MSG_WAITALL);
         if (res < 0)
         {
             return res;
