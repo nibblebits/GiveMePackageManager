@@ -6,6 +6,7 @@ pthread_mutex_t log_lock;
 void giveme_log_initialize()
 {
     pthread_mutex_init(&log_lock, NULL);
+
 }
 
 int giveme_log(const char* message, ...)

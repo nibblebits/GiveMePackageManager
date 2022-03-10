@@ -1098,6 +1098,7 @@ void giveme_network_update_known_hashes()
 
 void giveme_network_ping()
 {
+    sizeof(struct block);
     struct giveme_tcp_packet packet = {};
     packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PING;
 
@@ -1675,6 +1676,7 @@ int giveme_network_create_block_transaction_for_network_transaction(struct netwo
         break;
 
     case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE:
+        giveme_log("Downloaded package blcok transaction created\n");
         res = giveme_network_create_block_transaction_for_network_transaction_downloaded_package(transaction, transaction_out);
         break;
     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY:
@@ -2792,4 +2794,6 @@ void giveme_network_upnp_port_forward()
     upnp_redirect(GIVEME_TCP_PORT, GIVEME_TCP_PORT);
     upnp_redirect(GIVEME_TCP_DATA_EXCHANGE_PORT, GIVEME_TCP_DATA_EXCHANGE_PORT);
     network.last_upnp_forward = time(NULL);
+
+    sizeof(struct giveme_tcp_packet);
 }
