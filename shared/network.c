@@ -31,6 +31,23 @@
 #include "blockchain.h"
 #include "upnp.h"
 
+//  GIVEME_NETWORK_TCP_PACKET_TYPE_PING,
+//     GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE,
+//     GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY,
+//     GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK,
+//     GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN,
+//     GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE,
+//     GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE,
+static size_t packet_payload_sizes[] = {
+    sizeof(struct giveme_tcp_packet_ping),
+    sizeof(struct giveme_tcp_packet_publish_package),
+    sizeof(struct giveme_tcp_packet_publish_key),
+    sizeof(struct giveme_tcp_packet_verified_block),
+    sizeof(struct giveme_tcp_packet_update_chain),
+    sizeof(struct giveme_tcp_packet_update_chain_response),
+    sizeof(struct giveme_tcp_packet_package_downloaded),
+};
+
 struct network network;
 int giveme_network_accept_thread(struct queued_work *work);
 int giveme_network_connection_thread(struct queued_work *work);
@@ -44,6 +61,34 @@ struct network_connection_data *giveme_network_connection_data_new();
 int giveme_tcp_network_accept(int sock, struct sockaddr_in *client_out);
 int giveme_network_clear_transactions(struct network_transactions *transactions);
 int giveme_tcp_send_bytes(int client, void *ptr, size_t amount);
+
+/**
+ * @brief Returns the packet payload size for the given packet.
+ *
+ * @param packet
+ * @return size_t
+ */
+size_t giveme_tcp_packet_payload_size(struct giveme_tcp_packet *packet)
+{
+    size_t total_elements = sizeof(packet_payload_sizes) / sizeof(size_t);
+    if (packet->data.type >= total_elements)
+        return -1;
+
+    return packet_payload_sizes[packet->data.type];
+}
+
+
+size_t giveme_tcp_header_size()
+{
+    off_t shared_signed_data_offset = offsetof(struct giveme_tcp_packet, data.shared_signed_data);
+    return shared_signed_data_offset + sizeof(struct shared_signed_data);
+}
+
+off_t giveme_tcp_payload_offset()
+{
+    return giveme_tcp_header_size();
+}
+
 
 struct network_transaction **giveme_network_find_network_transaction_slot()
 {
@@ -567,7 +612,17 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
     }
 
     int client = connection->data->sock;
-    int res = giveme_tcp_send_bytes(client, packet, sizeof(struct giveme_tcp_packet)) > 0 ? 0 : -1;
+    // We must send the initial header of the packet. Data following is the payload
+    // the amount of bytes to be sent depends on the packet type
+
+    int res = giveme_tcp_send_bytes(client, packet, giveme_tcp_header_size()) > 0 ? 0 : -1;
+    if (res < 0)
+    {
+        return res;
+    }
+
+    // Send the payload of the packet
+    res = giveme_tcp_send_bytes(client, packet + giveme_tcp_payload_offset(), giveme_tcp_packet_payload_size(packet));
     if (res == 0)
     {
         connection->data->last_contact = time(NULL);
@@ -578,6 +633,7 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
 
 int giveme_tcp_dataexchange_recv_packet(int client, struct giveme_dataexchange_tcp_packet *packet)
 {
+    // We must start by reading the packet header.
     int res = giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_dataexchange_tcp_packet)) > 0 ? 0 : -1;
     return res;
 }
@@ -623,13 +679,21 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
         return -1;
     }
 
+   
     int client = connection->data->sock;
-    int res = giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_tcp_packet)) > 0 ? 0 : -1;
-    if (res == 0)
+    int res = giveme_tcp_recv_bytes(client, packet, giveme_tcp_header_size()) > 0 ? 0 : -1;
+    if (res < 0)
     {
-        connection->data->last_contact = time(NULL);
+        goto out;
     }
 
+    res = giveme_tcp_recv_bytes(client, packet+giveme_tcp_payload_offset(), giveme_tcp_packet_payload_size(packet));
+    if (res < 0)
+    {
+        goto out;
+    }
+
+    connection->data->last_contact = time(NULL);
     res = giveme_verify_packet(packet);
 
 out:

@@ -159,6 +159,15 @@ enum
 struct block block;
 struct giveme_tcp_packet
 {
+
+    // The hash of the data
+    char data_hash[SHA256_STRING_LENGTH];
+    // THe public key who signed the data hash confirming its state.
+    struct key pub_key;
+    // The signature of the resulting sign.
+    // Note that this signature and public key is of the verifier
+    struct signature sig;
+
     struct packet_data
     {
         int type;
@@ -169,9 +178,9 @@ struct giveme_tcp_packet
         // and the signiage can be confirmed, where as if we was to do this on the packet
         // the entire packet would have to be stored in other structures to confirm signing.
         struct shared_signed_data shared_signed_data;
+        // All data under this variable is downloaded depending on the packet type.
         union
         {
-
             struct giveme_tcp_packet_ping
             {
                 // The last known hash on the blockchain for the peer who pinged us.
@@ -241,16 +250,11 @@ struct giveme_tcp_packet
             // which will also affect the block size
             char s[GIVEME_MINIMUM_TCP_PACKET_SIZE];
         };
-
     } data;
 
-    // The hash of the data
-    char data_hash[SHA256_STRING_LENGTH];
-    // THe public key who signed the data hash confirming its state.
-    struct key pub_key;
-    // The signature of the resulting sign.
-    // Note that this signature and public key is of the verifier
-    struct signature sig;
+    // DO NOT WRITE VARIABLES UNDER HERE! DATA IS DOWNLOADED DEPNDING
+    // ON THE TYPE OF PACKET.. VARIABLES HERE WONT BE SENT OVER NETWORK.
+    // NEW VARIABLES MUST BE ABOVE THE PACKET_DATA STRUCTURE.
 };
 
 enum
