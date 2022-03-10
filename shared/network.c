@@ -80,6 +80,7 @@ size_t giveme_tcp_packet_payload_size(struct giveme_tcp_packet *packet)
 
 size_t giveme_tcp_header_size()
 {
+    sizeof(struct shared_signed_data);
     off_t shared_signed_data_offset = offsetof(struct giveme_tcp_packet, data.shared_signed_data);
     return shared_signed_data_offset + sizeof(struct shared_signed_data);
 }
@@ -622,7 +623,7 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
     }
 
     // Send the payload of the packet
-    res = giveme_tcp_send_bytes(client, packet + giveme_tcp_payload_offset(), giveme_tcp_packet_payload_size(packet));
+    res = giveme_tcp_send_bytes(client, (void*) packet +giveme_tcp_payload_offset(), giveme_tcp_packet_payload_size(packet));
     if (res == 0)
     {
         connection->data->last_contact = time(NULL);
@@ -687,7 +688,7 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
         goto out;
     }
 
-    res = giveme_tcp_recv_bytes(client, packet+giveme_tcp_payload_offset(), giveme_tcp_packet_payload_size(packet));
+    res = giveme_tcp_recv_bytes(client, (void*)packet+giveme_tcp_payload_offset(), giveme_tcp_packet_payload_size(packet));
     if (res < 0)
     {
         goto out;
