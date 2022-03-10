@@ -588,6 +588,23 @@ int giveme_tcp_dataexchange_send_packet(int client, struct giveme_dataexchange_t
     return res;
 }
 
+int giveme_tcp_packet_null_garbage(struct giveme_tcp_packet* packet)
+{
+     // We must NULL all unused bytes.
+    // So that we get rid of garbage and it does not damage
+    // the hashing process.
+    char* payload_start = (char*)packet+giveme_tcp_payload_offset();
+    char* payload_end = payload_start + giveme_tcp_packet_payload_size(packet);
+    char* packet_end = (char*)packet + sizeof(struct giveme_tcp_packet);
+
+    size_t total_unused_payload_bytes = 0;
+    total_unused_payload_bytes = payload_end - packet_end;
+    bzero(payload_end, total_unused_payload_bytes);
+
+    return 0;
+}
+
+
 int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_tcp_packet *packet)
 {
     if (!giveme_network_connection_connected(connection))
@@ -602,6 +619,11 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
         // We shouldn't send packets to ourself.. drop it..
         return -1;
     }
+
+    // We must NULL all unused bytes.
+    // So that we get rid of garbage and it does not damage
+    // the hashing process.
+    giveme_tcp_packet_null_garbage(packet);
 
     // Packet must be signed before being sent
     memcpy(&packet->pub_key, giveme_public_key(), sizeof(struct key));
@@ -680,7 +702,10 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
         return -1;
     }
 
-   
+    // Entire packet must start as NULL so that hashing process
+    // is not damaged
+    bzero(packet, sizeof(struct giveme_tcp_packet));
+    
     int client = connection->data->sock;
     int res = giveme_tcp_recv_bytes(client, packet, giveme_tcp_header_size()) > 0 ? 0 : -1;
     if (res < 0)
