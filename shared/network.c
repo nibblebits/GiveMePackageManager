@@ -598,7 +598,7 @@ int giveme_tcp_packet_null_garbage(struct giveme_tcp_packet* packet)
     char* packet_end = (char*)packet + sizeof(struct giveme_tcp_packet);
 
     size_t total_unused_payload_bytes = 0;
-    total_unused_payload_bytes = payload_end - packet_end;
+    total_unused_payload_bytes = packet_end - payload_end;
     bzero(payload_end, total_unused_payload_bytes);
 
     return 0;
