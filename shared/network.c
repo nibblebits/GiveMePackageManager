@@ -1455,6 +1455,7 @@ void giveme_network_packet_handle_update_chain(struct giveme_tcp_packet *packet,
     struct block *block = giveme_blockchain_block(packet->data.update_chain.last_hash, &blocks_left_to_end);
     struct block *last_block = giveme_blockchain_back();
 
+    // Seems they JAM when they ask eachother for their chains.
     if (block && blocks_left_to_end > 0)
     {
         struct giveme_tcp_packet res_packet = {};
