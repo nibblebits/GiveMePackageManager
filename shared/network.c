@@ -1149,6 +1149,7 @@ void giveme_network_reset_known_hash_counts()
 
 void giveme_network_update_known_hashes()
 {
+    giveme_log("%s updating known hashes\n", __FUNCTION__);
     giveme_network_reset_known_hash_counts();
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
