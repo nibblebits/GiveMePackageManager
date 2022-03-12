@@ -77,7 +77,6 @@ size_t giveme_tcp_packet_payload_size(struct giveme_tcp_packet *packet)
     return packet_payload_sizes[packet->data.type];
 }
 
-
 size_t giveme_tcp_header_size()
 {
     sizeof(struct shared_signed_data);
@@ -89,7 +88,6 @@ off_t giveme_tcp_payload_offset()
 {
     return giveme_tcp_header_size();
 }
-
 
 struct network_transaction **giveme_network_find_network_transaction_slot()
 {
@@ -588,14 +586,14 @@ int giveme_tcp_dataexchange_send_packet(int client, struct giveme_dataexchange_t
     return res;
 }
 
-int giveme_tcp_packet_null_garbage(struct giveme_tcp_packet* packet)
+int giveme_tcp_packet_null_garbage(struct giveme_tcp_packet *packet)
 {
-     // We must NULL all unused bytes.
+    // We must NULL all unused bytes.
     // So that we get rid of garbage and it does not damage
     // the hashing process.
-    char* payload_start = (char*)packet+giveme_tcp_payload_offset();
-    char* payload_end = payload_start + giveme_tcp_packet_payload_size(packet);
-    char* packet_end = (char*)packet + sizeof(struct giveme_tcp_packet);
+    char *payload_start = (char *)packet + giveme_tcp_payload_offset();
+    char *payload_end = payload_start + giveme_tcp_packet_payload_size(packet);
+    char *packet_end = (char *)packet + sizeof(struct giveme_tcp_packet);
 
     size_t total_unused_payload_bytes = 0;
     total_unused_payload_bytes = packet_end - payload_end;
@@ -603,7 +601,6 @@ int giveme_tcp_packet_null_garbage(struct giveme_tcp_packet* packet)
 
     return 0;
 }
-
 
 int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_tcp_packet *packet)
 {
@@ -645,7 +642,7 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
     }
 
     // Send the payload of the packet
-    res = giveme_tcp_send_bytes(client, (void*) packet +giveme_tcp_payload_offset(), giveme_tcp_packet_payload_size(packet));
+    res = giveme_tcp_send_bytes(client, (void *)packet + giveme_tcp_payload_offset(), giveme_tcp_packet_payload_size(packet));
     if (res == 0)
     {
         connection->data->last_contact = time(NULL);
@@ -705,7 +702,7 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
     // Entire packet must start as NULL so that hashing process
     // is not damaged
     bzero(packet, sizeof(struct giveme_tcp_packet));
-    
+
     int client = connection->data->sock;
     int res = giveme_tcp_recv_bytes(client, packet, giveme_tcp_header_size()) > 0 ? 0 : -1;
     if (res < 0)
@@ -713,7 +710,7 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
         goto out;
     }
 
-    res = giveme_tcp_recv_bytes(client, (void*)packet+giveme_tcp_payload_offset(), giveme_tcp_packet_payload_size(packet));
+    res = giveme_tcp_recv_bytes(client, (void *)packet + giveme_tcp_payload_offset(), giveme_tcp_packet_payload_size(packet));
     if (res < 0)
     {
         goto out;
@@ -1598,7 +1595,6 @@ bool giveme_network_needs_chain_update()
         return false;
     }
 
-
     // We should go back several blocks to see if we do have the famous hash
     // if so then we are the most up to date chain or an illegal fork
     int res = giveme_blockchain_begin_crawl(giveme_blockchain_block_hash(last_block), NULL);
@@ -1609,8 +1605,8 @@ bool giveme_network_needs_chain_update()
     }
 
     int count = 0;
-    struct block* crawled_block = giveme_blockchain_crawl_next(BLOCKCHAIN_CRAWLER_FLAG_CRAWL_DOWN);
-    while(crawled_block && count < 10)
+    struct block *crawled_block = giveme_blockchain_crawl_next(BLOCKCHAIN_CRAWLER_FLAG_CRAWL_DOWN);
+    while (crawled_block && count < 10)
     {
         if (S_EQ(giveme_blockchain_block_hash(crawled_block), network.hashes.famous_hash))
         {
@@ -1726,28 +1722,13 @@ void giveme_network_packets_process()
         }
 
         int sock = giveme_network_connection_socket(connection);
-        int count = 0;
-        do
+
+        struct giveme_tcp_packet packet = {};
+        if (giveme_tcp_recv_packet(connection, &packet) == 0)
         {
-            if (ioctl(sock, FIONREAD, &count) < 0)
-            {
-                giveme_log("%s failed to poll the connection with index %i for bytes\n", __FUNCTION__, count);
-                goto loop_end;
-            }
-            if (count > 0)
-            {
-                struct giveme_tcp_packet packet = {};
-                if (giveme_tcp_recv_packet(connection, &packet) < 0)
-                {
-                    giveme_log("%s failed to read packet even though data was supposed to be available\n", __FUNCTION__);
-                    goto loop_end;
-                }
-
-                giveme_network_packet_process(&packet, connection);
-            }
-        } while (count > 0);
-
-    loop_end:
+            // We have a packet then process it.
+            giveme_network_packet_process(&packet, connection);
+        }
         pthread_mutex_unlock(&network.connections[i].lock);
     }
 }
