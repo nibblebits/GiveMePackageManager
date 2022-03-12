@@ -552,6 +552,43 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
     return res;
 }
 
+int giveme_tcp_recv_bytes_no_block(int client, void *ptr, size_t amount)
+{
+    int res = 0;
+    size_t amount_left = amount;
+
+    struct timeval timeout;
+    timeout.tv_sec = GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                   sizeof timeout) < 0)
+    {
+        giveme_log("Failed to set socket timeout\n");
+        return -1;
+    }
+
+    // Read the first byte non blocking so we can test if theirs any data on the stream
+    res = recv(client, ptr, 1, 0);
+    if (res < 0)
+    {
+        return -1;
+    }
+
+    amount_left--;
+
+    while (amount_left > 0)
+    {
+        res = recv(client, ptr+1, amount_left, MSG_WAITALL);
+        if (res < 0)
+        {
+            return res;
+        }
+        amount_left -= res;
+    }
+    return res;
+}
+
 int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
 {
     int res = 0;
@@ -704,7 +741,7 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
     bzero(packet, sizeof(struct giveme_tcp_packet));
 
     int client = connection->data->sock;
-    int res = giveme_tcp_recv_bytes(client, packet, giveme_tcp_header_size()) > 0 ? 0 : -1;
+    int res = giveme_tcp_recv_bytes_no_block(client, packet, giveme_tcp_header_size()) > 0 ? 0 : -1;
     if (res < 0)
     {
         goto out;
