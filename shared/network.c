@@ -1590,11 +1590,34 @@ bool giveme_network_needs_chain_update()
         return false;
     }
 
+    // Let's first check if our current last block is equal to the famous hash.
+    // If it is we are done and the chain does not need an update.
     if (S_EQ(giveme_blockchain_block_hash(last_block), network.hashes.famous_hash))
     {
         return false;
     }
 
+
+    // We should go back several blocks to see if we do have the famous hash
+    // if so then we are the most up to date chain or an illegal fork
+    int res = giveme_blockchain_begin_crawl(giveme_blockchain_block_hash(last_block), NULL);
+    if (res < 0)
+    {
+        giveme_log("%s problem initiating crawl procedure\n", __FUNCTION__);
+        return false;
+    }
+
+    int count = 0;
+    struct block* crawled_block = giveme_blockchain_crawl_next(BLOCKCHAIN_CRAWLER_FLAG_CRAWL_DOWN);
+    while(crawled_block && count < 10)
+    {
+        if (S_EQ(giveme_blockchain_block_hash(crawled_block), network.hashes.famous_hash))
+        {
+            return false;
+        }
+
+        count++;
+    }
     return true;
 }
 
