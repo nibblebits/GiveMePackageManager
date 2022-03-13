@@ -552,6 +552,30 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
     return res;
 }
 
+int giveme_tcp_client_enable_blocking(int client)
+{
+    if(fcntl(client, F_SETFL, fcntl(client, F_GETFL) | O_NONBLOCK) < 0) 
+    {
+        giveme_log("%s failed to put the socket in non-blocking mode\n", __FUNCTION__);
+        return -1;
+    }
+
+    return 0;
+}
+
+
+int giveme_tcp_client_disable_blocking(int client)
+{
+    if(fcntl(client, F_SETFL, fcntl(client, F_GETFL) & ~O_NONBLOCK) < 0) 
+    {
+        giveme_log("%s failed to put the socket in non-blocking mode\n", __FUNCTION__);
+        return -1;
+    }
+
+    return 0;
+}
+
+
 int giveme_tcp_recv_bytes_no_block(int client, void *ptr, size_t amount)
 {
     int res = 0;
@@ -568,15 +592,18 @@ int giveme_tcp_recv_bytes_no_block(int client, void *ptr, size_t amount)
         return -1;
     }
 
+    giveme_tcp_client_disable_blocking(client);
     // Read the first byte non blocking so we can test if theirs any data on the stream
     res = recv(client, ptr, 1, 0);
     if (res < 0)
     {
+        giveme_tcp_client_enable_blocking(client);
         return -1;
     }
 
     amount_left--;
-
+    giveme_tcp_client_enable_blocking(client);
+    
     while (amount_left > 0)
     {
         res = recv(client, ptr+1, amount_left, MSG_WAITALL);
