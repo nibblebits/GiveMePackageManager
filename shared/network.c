@@ -595,7 +595,7 @@ int giveme_tcp_recv_bytes_no_block(int client, void *ptr, size_t amount)
     giveme_tcp_client_disable_blocking(client);
     // Read the first byte non blocking so we can test if theirs any data on the stream
     res = recv(client, ptr, 1, 0);
-    if (res < 0)
+    if (res <= 0)
     {
         giveme_tcp_client_enable_blocking(client);
         return -1;
@@ -603,10 +603,10 @@ int giveme_tcp_recv_bytes_no_block(int client, void *ptr, size_t amount)
 
     amount_left--;
     giveme_tcp_client_enable_blocking(client);
-    
+
     while (amount_left > 0)
     {
-        res = recv(client, ptr+1, amount_left, MSG_WAITALL);
+        res = recv(client, ptr+1, amount_left, 0);
         if (res < 0)
         {
             return res;
@@ -634,7 +634,7 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
 
     while (amount_left > 0)
     {
-        res = recv(client, ptr, amount_left, MSG_WAITALL);
+        res = recv(client, ptr, amount_left, 0);
         if (res < 0)
         {
             return res;
