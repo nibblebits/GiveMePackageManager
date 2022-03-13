@@ -609,6 +609,7 @@ int giveme_tcp_recv_bytes_no_block(int client, void *ptr, size_t amount)
         res = recv(client, ptr+1, amount_left, MSG_WAITALL);
         if (res <= 0)
         {
+            res = -1;
             return res;
         }
         amount_left -= res;
@@ -637,6 +638,7 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
         res = recv(client, ptr, amount_left, MSG_WAITALL);
         if (res <= 0)
         {
+            res = -1;
             return res;
         }
         amount_left -= res;
