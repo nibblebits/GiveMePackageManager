@@ -279,6 +279,7 @@ int giveme_packages_push(struct block *block, char *package_name, char *transact
             strncpy(package->downloaded.filepath, filepath, sizeof(package->downloaded.filepath));
             package->downloaded.yes = true;
         }
+        packages.total++;
     }
 
     giveme_packages_add_ip_address(package, known_ip_address);

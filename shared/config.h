@@ -36,8 +36,8 @@
 
 #define GIVEME_MAX_SIGNATURE_PART_LENGTH 65
 
-// We allow a maximum of 1024 transactions per block
-#define GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK 1024
+// We allow a maximum of 16 transactions per block
+#define GIVEME_MAXIMUM_TRANSACTIONS_IN_A_BLOCK 16
 
 #define GIVEME_VALIDATION_MINING_REWARD 0.05
 
