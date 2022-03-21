@@ -554,9 +554,9 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
 
 int giveme_tcp_client_enable_blocking(int client)
 {
-    if(fcntl(client, F_SETFL, fcntl(client, F_GETFL) | ~O_NONBLOCK) < 0) 
+    if(fcntl(client, F_SETFL, fcntl(client, F_GETFL) & ~O_NONBLOCK) < 0) 
     {
-        giveme_log("%s failed to put the socket in non-blocking mode\n", __FUNCTION__);
+        giveme_log("%s failed to put the socket in enable blocking mode\n", __FUNCTION__);
         return -1;
     }
 
@@ -566,7 +566,7 @@ int giveme_tcp_client_enable_blocking(int client)
 
 int giveme_tcp_client_disable_blocking(int client)
 {
-    if(fcntl(client, F_SETFL, fcntl(client, F_GETFL) & O_NONBLOCK) < 0) 
+    if(fcntl(client, F_SETFL, fcntl(client, F_GETFL) | O_NONBLOCK) < 0) 
     {
         giveme_log("%s failed to put the socket in non-blocking mode\n", __FUNCTION__);
         return -1;
