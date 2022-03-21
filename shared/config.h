@@ -62,7 +62,9 @@
 // If we have no client accepted or message within 2 seconds we will drop the TCP connection
 #define GIVEME_NETWORK_TCP_CONNECT_TIMEOUT_SECONDS 2
 // 1 seconds waiting on a recv or send and we will timeout.
-#define GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS 1
+#define GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS 2
+// Longer timeout for data exchange protocol
+#define GIVEME_NETWORK_TCP_DATA_EXCHANGE_IO_TIMEOUT_SECONDS 10
 
 #define GIVEME_NETWORK_TCP_DATA_EXCHANGE_LISTEN_TIMEOUT 10
 

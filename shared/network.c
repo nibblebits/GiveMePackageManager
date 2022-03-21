@@ -617,13 +617,13 @@ int giveme_tcp_recv_bytes_no_block(int client, void *ptr, size_t amount)
     return res;
 }
 
-int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount)
+int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount, size_t timeout_seconds)
 {
     int res = 0;
     size_t amount_left = amount;
 
     struct timeval timeout;
-    timeout.tv_sec = GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS;
+    timeout.tv_sec = timeout_seconds;
     timeout.tv_usec = 0;
 
     if (setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout,
@@ -720,7 +720,7 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
 int giveme_tcp_dataexchange_recv_packet(int client, struct giveme_dataexchange_tcp_packet *packet)
 {
     // We must start by reading the packet header.
-    int res = giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_dataexchange_tcp_packet)) > 0 ? 0 : -1;
+    int res = giveme_tcp_recv_bytes(client, packet, sizeof(struct giveme_dataexchange_tcp_packet), GIVEME_NETWORK_TCP_DATA_EXCHANGE_IO_TIMEOUT_SECONDS) > 0 ? 0 : -1;
     return res;
 }
 
@@ -776,7 +776,7 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
         goto out;
     }
 
-    res = giveme_tcp_recv_bytes(client, (void *)packet + giveme_tcp_payload_offset(), giveme_tcp_packet_payload_size(packet));
+    res = giveme_tcp_recv_bytes(client, (void *)packet + giveme_tcp_payload_offset(), giveme_tcp_packet_payload_size(packet), GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS);
     if (res < 0)
     {
         goto out;
@@ -1608,7 +1608,7 @@ int giveme_network_download_chain(struct in_addr addr, int port, const char *sta
     {
         struct block block;
         giveme_log("%s downloading block %i\n", __FUNCTION__, i);
-        if (giveme_tcp_recv_bytes(sock, &block, sizeof(struct block)) < 0)
+        if (giveme_tcp_recv_bytes(sock, &block, sizeof(struct block), GIVEME_NETWORK_TCP_DATA_EXCHANGE_IO_TIMEOUT_SECONDS) < 0)
         {
             giveme_log("%s failed to read a block from the chain\n", __FUNCTION__);
             res = -1;
@@ -2149,7 +2149,7 @@ int giveme_network_download_package_peer_session_download_chunk(struct network_p
     }
 
     // Okay it is safe for us to read the data into the buffer lets do it.
-    res = giveme_tcp_recv_bytes(sock, data, total_bytes);
+    res = giveme_tcp_recv_bytes(sock, data, total_bytes, GIVEME_NETWORK_TCP_DATA_EXCHANGE_IO_TIMEOUT_SECONDS);
     if (res < 0)
     {
         giveme_log("%s failed to read the chunk bytes from the peer\n", __FUNCTION__);
@@ -2440,7 +2440,7 @@ int giveme_network_update_chain_for_block_from_peer(struct network_connection_da
 
     // Let's now read the block
     struct block block = {};
-    res = giveme_tcp_recv_bytes(sock, &block, sizeof(struct block));
+    res = giveme_tcp_recv_bytes(sock, &block, sizeof(struct block), GIVEME_NETWORK_TCP_DATA_EXCHANGE_IO_TIMEOUT_SECONDS);
     if (res < 0)
     {
         giveme_log("%s peer did not send us a block\n", __FUNCTION__);
