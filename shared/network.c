@@ -633,6 +633,8 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount, size_t timeout_s
         return -1;
     }
 
+    giveme_tcp_client_enable_blocking(client);
+
     while (amount_left > 0)
     {
         res = recv(client, ptr, amount_left, MSG_WAITALL);
