@@ -107,6 +107,29 @@ int giveme_send_message(int sfd, const char *message)
     return 0;
 }
 
+int giveme_my_awaiting_transactions(int sfd, struct network_af_unix_my_awaiting_transactions_response* packet_out)
+{
+    struct network_af_unix_packet packet = {};
+    packet.type = NETWORK_AF_UNIX_PACKET_TYPE_MY_AWAITING_TRANSACTIONS;
+    if (giveme_af_unix_write(F_SETFD, &packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
+    {
+        printf("Problem getting awaiting transactions\n");
+        return NULL;
+    }
+
+    // Let's read back the publish response
+    struct network_af_unix_packet res_packet;
+    if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
+    {
+        printf("Failed to receive response packet from server\n");
+        return -1;
+    }
+
+    assert(res_packet.type == NETWORK_AF_UNIX_PACKET_TYPE_MY_AWAITING_TRANSACTIONS_RESPONSE);
+    memcpy(packet_out, &res_packet.my_awaiting_transactions_response, sizeof(struct network_af_unix_my_awaiting_transactions_response));
+    return 0;
+}
+
 struct blockchain_individual giveme_info(int sfd)
 {
     struct blockchain_individual blank_data = {};
@@ -300,7 +323,7 @@ int giveme_network_af_unix_handle_packet_my_info(int sock, struct network_af_uni
     return 0;
 }
 
-int giveme_netwrok_af_unix_handle_packet_package_download(int sock, struct network_af_unix_packet *packet)
+int giveme_network_af_unix_handle_packet_package_download(int sock, struct network_af_unix_packet *packet)
 {
     struct network_af_unix_packet res_packet = {};
 
@@ -356,6 +379,26 @@ int giveme_network_af_unix_handle_packet_packages(int sock, struct network_af_un
     giveme_af_unix_write(sock, &res_packet);
     return 0;
 }
+
+int giveme_network_af_unix_handle_packet_my_awaiting_transactions(int sock, struct network_af_unix_packet *packet)
+{
+    struct network_af_unix_packet res_packet = {};
+    struct network_awaiting_transaction *transaction = giveme_network_my_awaiting_transactions_get_by_index(0);
+    for (int i = 0; i < AWAITING_TRANSACTION_MAX_PER_PAGE; i++)
+    {
+        transaction = giveme_network_my_awaiting_transactions_get_by_index(i);
+        if (!transaction)
+            break;
+
+        memcpy(&res_packet.my_awaiting_transactions_response.transactions[i], transaction, sizeof(struct network_awaiting_transaction));
+        res_packet.my_awaiting_transactions_response.total++;
+    }
+
+    res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_MY_AWAITING_TRANSACTIONS_RESPONSE;
+    giveme_af_unix_write(sock, &res_packet);
+    return 0;
+}
+
 int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet *packet)
 {
     int res = 0;
@@ -381,7 +424,11 @@ int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet
         res = giveme_network_af_unix_handle_packet_my_info(sock, packet);
         break;
     case NETWORK_AF_UNIX_PACKET_TYPE_PACKAGE_DOWNLOAD:
-        res = giveme_netwrok_af_unix_handle_packet_package_download(sock, packet);
+        res = giveme_network_af_unix_handle_packet_package_download(sock, packet);
+        break;
+
+    case NETWORK_AF_UNIX_PACKET_TYPE_MY_AWAITING_TRANSACTIONS:
+        res = giveme_network_af_unix_handle_packet_my_awaiting_transactions(sock, packet);
         break;
     }
     return res;

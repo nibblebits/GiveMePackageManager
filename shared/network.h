@@ -492,6 +492,7 @@ void giveme_network_update_chain();
 int giveme_network_my_awaiting_transaction_add(struct network_awaiting_transaction *transaction);
 void giveme_network_my_awaiting_transactions_lock();
 void giveme_network_my_awaiting_transactions_unlock();
+struct network_awaiting_transaction* giveme_network_my_awaiting_transactions_get_by_index(int index);
 void giveme_network_rebroadcast_my_pending_transactions();
 
 struct shared_signed_data *giveme_tcp_packet_shared_signed_data(struct giveme_tcp_packet *packet);

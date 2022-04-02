@@ -1364,6 +1364,17 @@ void giveme_network_my_awaiting_transactions_remove_succeeded()
     }
 }
 
+struct network_awaiting_transaction* giveme_network_my_awaiting_transactions_get_by_index(int index)
+{
+    if (index >= network.my_awaiting_transactions.total)
+    {
+        return NULL;
+    }
+
+    return &network.my_awaiting_transactions.data[index];
+}
+
+
 struct network_awaiting_transaction *giveme_network_my_awaiting_transactions_get_by_packet_id(int id)
 {
     for (int i = 0; i < network.my_awaiting_transactions.mem_total; i++)
@@ -2957,6 +2968,4 @@ void giveme_network_upnp_port_forward()
     upnp_redirect(GIVEME_TCP_PORT, GIVEME_TCP_PORT);
     upnp_redirect(GIVEME_TCP_DATA_EXCHANGE_PORT, GIVEME_TCP_DATA_EXCHANGE_PORT);
     network.last_upnp_forward = time(NULL);
-
-    sizeof(struct giveme_tcp_packet);
 }

@@ -154,6 +154,28 @@ int get_my_info(int argc, char *argv[])
 	return 0;
 }
 
+int awaiting_transactions(int argc, char* argv[])
+{
+	int res = -1;
+	int sock = giveme_af_unix_connect();
+	struct network_af_unix_my_awaiting_transactions_response packet_out;
+	res = giveme_my_awaiting_transactions(sock, &packet_out);
+	if (res < 0)
+	{
+		printf("There was an issue getting your awaiting transactions\n");
+		goto out;
+	}
+
+	printf("You have %i awaiting transactions\n", (int)packet_out.total);
+	for (int i = 0; i < packet_out.total; i++)
+	{
+		printf("Transaction %s\n", packet_out.transactions[i].packet.data_hash);
+	}
+out:
+	return res;
+
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc < GIVEME_MINIMUM_ARGC)
@@ -185,6 +207,10 @@ int main(int argc, char *argv[])
 	else if(S_EQ(argv[1], "download"))
 	{
 		return download_package(argc, argv);
+	}
+	else if(S_EQ(argv[1], "awaiting"))
+	{
+		return awaiting_transactions(argc, argv);
 	}
 
 	return 0;

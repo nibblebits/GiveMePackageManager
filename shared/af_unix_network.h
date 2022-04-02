@@ -5,6 +5,7 @@
 #include "config.h"
 #include "blockchain.h"
 #include "package.h"
+#include "network.h"
 #define NETWORK_AF_UNIX_PACKET_IO_OKAY 0
 #define NETWORK_AF_UNIX_PACKET_IO_ERROR -1
 #define FRIENDLY_MESSAGE_MAX 512
@@ -24,6 +25,8 @@ enum
     NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES_RESPONSE,
     NETWORK_AF_UNIX_PACKET_TYPE_PACKAGE_DOWNLOAD,
     NETWORK_AF_UNIX_PACKET_TYPE_PACKAGE_DOWNLOAD_RESPONSE,
+    NETWORK_AF_UNIX_PACKET_TYPE_MY_AWAITING_TRANSACTIONS,
+    NETWORK_AF_UNIX_PACKET_TYPE_MY_AWAITING_TRANSACTIONS_RESPONSE,
     NETWORK_AF_UNIX_PACKET_TYPE_NOT_FOUND,
     NETWORK_AF_UNIX_PACKET_TYPE_PROBLEM
 };
@@ -32,7 +35,7 @@ enum
 {
     NETWORK_AF_UNIX_PACKET_FLAG_HAS_FRIENDLY_MESSAGE = 0b00000001
 };
-
+struct network_awaiting_transaction;
 struct network_af_unix_packet
 {
     int type;
@@ -102,6 +105,18 @@ struct network_af_unix_packet
             char path[PATH_MAX];
             size_t size;
         } package_download_response;
+
+        struct network_af_unix_my_awaiting_transactions
+        {
+
+        } my_awaiting_transactions;
+
+        struct network_af_unix_my_awaiting_transactions_response
+        {
+            size_t total;
+            struct network_awaiting_transaction transactions[AWAITING_TRANSACTION_MAX_PER_PAGE];
+
+        } my_awaiting_transactions_response;
     };
 
     char message[FRIENDLY_MESSAGE_MAX];
@@ -115,4 +130,6 @@ int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_
 int giveme_signup(int sfd, const char *name);
 int giveme_make_fake_blockchain(int sfd, size_t total_blocks);
 struct blockchain_individual giveme_info(int sfd);
+int giveme_my_awaiting_transactions(int sfd, struct network_af_unix_my_awaiting_transactions_response* packet_out);
+
 #endif
