@@ -249,13 +249,13 @@ struct giveme_tcp_packet
             // we should reserve some data in the tcp packet
             // which will also affect the block size
             char s[GIVEME_MINIMUM_TCP_PACKET_SIZE];
-        };
+        } __attribute__((packed));
     } data;
 
     // DO NOT WRITE VARIABLES UNDER HERE! DATA IS DOWNLOADED DEPNDING
     // ON THE TYPE OF PACKET.. VARIABLES HERE WONT BE SENT OVER NETWORK.
     // NEW VARIABLES MUST BE ABOVE THE PACKET_DATA STRUCTURE.
-} __attribute__((packed));
+};
 
 enum
 {
