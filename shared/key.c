@@ -41,6 +41,9 @@ bool key_loaded(struct key* key)
 
 bool key_cmp(struct key *key, struct key *key2)
 {
+    if (!key || !key2)
+        return false;
+        
     return strncmp(key->key, key2->key, sizeof(key->key)) == 0;
 }
 
