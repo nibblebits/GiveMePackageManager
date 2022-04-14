@@ -1364,6 +1364,23 @@ void giveme_network_my_awaiting_transactions_remove_succeeded()
     }
 }
 
+const char* giveme_network_awaiting_transaction_state_string(struct network_awaiting_transaction* transaction)
+{
+    const char* ret = "Unknown";
+    if (transaction->state == GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_FAILED)
+    {
+        ret = "failed";
+    }
+    else if(transaction->state == GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_SUCCESS)
+    {
+        ret = "success";
+    }
+    else if(transaction->state == GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_PENDING)
+    {
+        ret = "pending";
+    }
+    return ret;
+}
 struct network_awaiting_transaction* giveme_network_my_awaiting_transactions_get_by_index(int index)
 {
     if (index >= network.my_awaiting_transactions.total)

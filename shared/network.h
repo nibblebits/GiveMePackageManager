@@ -181,6 +181,7 @@ struct giveme_tcp_packet
         // All data under this variable is downloaded depending on the packet type.
         union
         {
+
             struct giveme_tcp_packet_ping
             {
                 // The last known hash on the blockchain for the peer who pinged us.
@@ -494,6 +495,7 @@ void giveme_network_my_awaiting_transactions_lock();
 void giveme_network_my_awaiting_transactions_unlock();
 struct network_awaiting_transaction* giveme_network_my_awaiting_transactions_get_by_index(int index);
 void giveme_network_rebroadcast_my_pending_transactions();
+const char* giveme_network_awaiting_transaction_state_string(struct network_awaiting_transaction* transaction);
 
 struct shared_signed_data *giveme_tcp_packet_shared_signed_data(struct giveme_tcp_packet *packet);
 

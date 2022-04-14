@@ -169,7 +169,7 @@ int awaiting_transactions(int argc, char* argv[])
 	printf("You have %i awaiting transactions\n", (int)packet_out.total);
 	for (int i = 0; i < packet_out.total; i++)
 	{
-		printf("Transaction %s\n", packet_out.transactions[i].packet.data_hash);
+		printf("Transaction %s - %s\n", packet_out.transactions[i].packet.data_hash, giveme_network_awaiting_transaction_state_string(&packet_out.transactions[i]));
 	}
 out:
 	return res;

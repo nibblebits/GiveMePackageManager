@@ -111,10 +111,10 @@ int giveme_my_awaiting_transactions(int sfd, struct network_af_unix_my_awaiting_
 {
     struct network_af_unix_packet packet = {};
     packet.type = NETWORK_AF_UNIX_PACKET_TYPE_MY_AWAITING_TRANSACTIONS;
-    if (giveme_af_unix_write(F_SETFD, &packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
+    if (giveme_af_unix_write(sfd, &packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
     {
         printf("Problem getting awaiting transactions\n");
-        return NULL;
+        return -1;
     }
 
     // Let's read back the publish response
@@ -390,6 +390,12 @@ int giveme_network_af_unix_handle_packet_my_awaiting_transactions(int sock, stru
         if (!transaction)
             break;
 
+        if (transaction->state != GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_PENDING 
+            && transaction->state != GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_FAILED)
+        {
+            continue;
+        }
+        
         memcpy(&res_packet.my_awaiting_transactions_response.transactions[i], transaction, sizeof(struct network_awaiting_transaction));
         res_packet.my_awaiting_transactions_response.total++;
     }
