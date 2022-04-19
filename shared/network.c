@@ -2505,7 +2505,8 @@ void giveme_network_update_chain_from_found_peers()
         struct network_connection_data *peer = vector_peek(network.blockchain.peers_with_blocks);
         struct network_connection_data *last_peer = NULL;
 
-        while (peer)
+        int attempts = 0;
+        while (peer && attempts < 10)
         {
             // We got to keep pinging as this process can take a long time
             // we want people to still know we exist.
@@ -2528,6 +2529,7 @@ void giveme_network_update_chain_from_found_peers()
                 }
                 last_peer = NULL;
                 peer = vector_peek(network.blockchain.peers_with_blocks);
+                attempts++;
                 continue;
             }
 
