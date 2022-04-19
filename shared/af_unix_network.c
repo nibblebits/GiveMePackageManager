@@ -53,7 +53,7 @@ int giveme_af_unix_write(int sfd, struct network_af_unix_packet *packet)
     size_t amount_to_write = sizeof(struct network_af_unix_packet);
     while (amount_to_write > 0)
     {
-        res = write(sfd, packet, amount_to_write);
+        res = send(sfd, packet, amount_to_write, 0);
         if (res == -1)
             break;
         amount_to_write -= res;
@@ -72,7 +72,7 @@ int giveme_af_unix_read(int sfd, struct network_af_unix_packet *packet_out)
     size_t amount_to_read = sizeof(struct network_af_unix_packet);
     while (amount_to_read > 0)
     {
-        res = read(sfd, packet_out, amount_to_read);
+        res = recv(sfd, packet_out, amount_to_read, 0);
         if (res == -1)
             break;
         amount_to_read -= res;
@@ -157,7 +157,7 @@ struct blockchain_individual giveme_info(int sfd)
 
 int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_packages *packages_res_out)
 {
-    static struct network_af_unix_packet packet;
+    struct network_af_unix_packet packet;
     bzero(&packet, sizeof(packet));
     packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES;
     packet.packages.page = page;
@@ -169,7 +169,7 @@ int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_
     }
 
     // Let's read back the publish response
-    static struct network_af_unix_packet res_packet;
+    struct network_af_unix_packet res_packet;
     if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
     {
         printf("Failed to receive response packet from server\n");
@@ -442,7 +442,7 @@ int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet
 int giveme_network_server_af_unix_read(int sock)
 {
     int res = 0;
-    static struct network_af_unix_packet packet;
+    struct network_af_unix_packet packet;
     res = giveme_af_unix_read(sock, &packet);
     if (res < 0)
         return res;

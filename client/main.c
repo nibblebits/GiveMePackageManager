@@ -2,6 +2,10 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/signal.h>
 #include "config.h"
 #include "package.h"
 #include "af_unix_network.h"
@@ -183,6 +187,8 @@ int main(int argc, char *argv[])
 		printf("You must provide a package name to download\n E.g giveme laravel-framework\n\nTo publish do\ngiveme publish DIRECTORY_PATH\n");
 		return -1;
 	}
+
+  	sigaction(SIGPIPE, &(struct sigaction){SIG_IGN}, NULL);
 
 	if (S_EQ(argv[1], "publish"))
 	{

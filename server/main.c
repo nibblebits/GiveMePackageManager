@@ -51,6 +51,7 @@ void initialize(bool mine_genesis)
 
 int main(int argc, char *argv[])
 {
+	sigaction(SIGPIPE, &(struct sigaction){SIG_IGN}, NULL);
 	bool mine_genesis = (argc > 1 && S_EQ(argv[1], "genesis"));
 	initialize(mine_genesis);
 	giveme_thread_pool_start();
