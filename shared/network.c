@@ -977,10 +977,18 @@ int giveme_tcp_network_connect(struct in_addr addr, int port, int flags)
         return -1;
     }
 
+
+    int synRetries = 2; // Send a total of 3 SYN packets => Timeout ~7s
+    if(setsockopt(sockfd, IPPROTO_TCP, TCP_SYNCNT, &synRetries, sizeof(synRetries)) < 0)
+    {
+        giveme_log("%s issue setting the maximum SYN packets\n", __FUNCTION__);
+        return -1;
+    }
+
     // connect the client socket to server socket
     if (connect(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
     {
-        //  giveme_log("connection with the server failed...\n");
+          giveme_log("%s connection with the server failed...\n", __FUNCTION__);
         return -1;
     }
 
