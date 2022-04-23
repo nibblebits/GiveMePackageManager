@@ -1022,7 +1022,12 @@ int giveme_network_connect_to_ip(struct in_addr ip)
     {
         return 1;
     }
-    return giveme_tcp_network_connect(ip, GIVEME_TCP_PORT, GIVEME_CONNECT_FLAG_ADD_TO_CONNECTIONS) < 0 ? -1 : 0;
+    int res = giveme_tcp_network_connect(ip, GIVEME_TCP_PORT, GIVEME_CONNECT_FLAG_ADD_TO_CONNECTIONS) < 0 ? -1 : 0;
+    if (res < 0)
+    {
+        giveme_log("%s failed to connect to ip\n", __FUNCTION__);
+    }
+    return res;
 }
 int giveme_network_connect()
 {
@@ -2524,6 +2529,7 @@ void giveme_network_update_chain_from_found_peers()
                 // lied to us..
                 vector_pop_at_data_address(network.blockchain.peers_with_blocks, peer);
                 if (last_peer)
+                
                 {
                     vector_pop_at_data_address(network.blockchain.peers_with_blocks, last_peer);
                 }
