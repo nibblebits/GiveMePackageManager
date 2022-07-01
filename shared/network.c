@@ -91,18 +91,22 @@ void giveme_network_action_execute(struct network_action *action)
  */
 int giveme_network_action_thread(struct queued_work *work)
 {
-    struct network_action *action = NULL;
-    vector_set_peek_pointer(network.action_queue.action_vector, 0);
-    pthread_mutex_lock(&network.action_queue.lock);
-    action = vector_peek(network.action_queue.action_vector);
-    pthread_mutex_unlock(&network.action_queue.lock);
-
-    while (action)
+    while (1)
     {
-        giveme_network_action_execute(action);
+        struct network_action *action = NULL;
+        vector_set_peek_pointer(network.action_queue.action_vector, 0);
         pthread_mutex_lock(&network.action_queue.lock);
         action = vector_peek(network.action_queue.action_vector);
         pthread_mutex_unlock(&network.action_queue.lock);
+
+        while (action)
+        {
+            giveme_network_action_execute(action);
+            pthread_mutex_lock(&network.action_queue.lock);
+            action = vector_peek(network.action_queue.action_vector);
+            pthread_mutex_unlock(&network.action_queue.lock);
+        }
+        sleep(1);
     }
 
     return 0;
@@ -2766,9 +2770,8 @@ int giveme_network_accept_thread(struct queued_work *work)
 }
 void giveme_network_accept_thread_start()
 {
-   giveme_queue_work(giveme_network_accept_thread, NULL);
+    giveme_queue_work(giveme_network_accept_thread, NULL);
 }
-
 
 void giveme_network_initialize_connections()
 {
