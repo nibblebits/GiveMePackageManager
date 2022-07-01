@@ -41,6 +41,8 @@ void giveme_packages_calculate_total()
         }
         packages.total++;
     }
+
+    giveme_log("%s total packages: %i\n", __FUNCTION__, packages.total);
 }
 size_t giveme_packages_size()
 {
@@ -340,6 +342,7 @@ int giveme_packages_mapping_build()
     }
 
     packages.total_possible_packages = total_bytes / sizeof(struct package);
+    giveme_log("%s total possible packages before extend required %i\n", __FUNCTION__, (int)packages.total_possible_packages);
 out:
     return res;
 }

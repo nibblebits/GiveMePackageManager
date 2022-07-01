@@ -28,7 +28,7 @@
 #define GIVEME_IP_STRING_SIZE 17
 
 // Must have the last number as 1
-#define GIVEME_SECONDS_TO_MAKE_BLOCK 121
+#define GIVEME_SECONDS_TO_MAKE_BLOCK 61
 
 #define GIVEME_MINIMUM_TCP_PACKET_SIZE 1024
 // 64 bytes for hashed key then +1 for null terminator

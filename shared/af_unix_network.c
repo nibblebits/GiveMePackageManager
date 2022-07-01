@@ -97,7 +97,7 @@ int giveme_af_unix_read(int sfd, struct network_af_unix_packet *packet_out)
 
 int giveme_send_message(int sfd, const char *message)
 {
-    struct network_af_unix_packet packet = {};
+    static struct network_af_unix_packet packet = {};
     packet.type = NETWORK_AF_UNIX_PACKET_TYPE_JUST_A_MESSAGE;
     packet.flags |= NETWORK_AF_UNIX_PACKET_FLAG_HAS_FRIENDLY_MESSAGE;
     sprintf(packet.message, "%s", message);
@@ -109,7 +109,7 @@ int giveme_send_message(int sfd, const char *message)
 
 int giveme_my_awaiting_transactions(int sfd, struct network_af_unix_my_awaiting_transactions_response* packet_out)
 {
-    struct network_af_unix_packet packet = {};
+    static struct network_af_unix_packet packet = {};
     packet.type = NETWORK_AF_UNIX_PACKET_TYPE_MY_AWAITING_TRANSACTIONS;
     if (giveme_af_unix_write(sfd, &packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
     {
@@ -118,7 +118,7 @@ int giveme_my_awaiting_transactions(int sfd, struct network_af_unix_my_awaiting_
     }
 
     // Let's read back the publish response
-    struct network_af_unix_packet res_packet;
+    static struct network_af_unix_packet res_packet;
     if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
     {
         printf("Failed to receive response packet from server\n");
@@ -133,7 +133,7 @@ int giveme_my_awaiting_transactions(int sfd, struct network_af_unix_my_awaiting_
 struct blockchain_individual giveme_info(int sfd)
 {
     struct blockchain_individual blank_data = {};
-    struct network_af_unix_packet packet = {};
+    static struct network_af_unix_packet packet = {};
     packet.type = NETWORK_AF_UNIX_PACKET_TYPE_MY_INFO;
     // Send the packet
     if (giveme_af_unix_write(sfd, &packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
@@ -143,7 +143,7 @@ struct blockchain_individual giveme_info(int sfd)
     }
 
     // Let's read back the publish response
-    struct network_af_unix_packet res_packet;
+    static struct network_af_unix_packet res_packet;
     if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
     {
         printf("Failed to receive response packet from server\n");
@@ -157,26 +157,30 @@ struct blockchain_individual giveme_info(int sfd)
 
 int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_packages *packages_res_out)
 {
-    struct network_af_unix_packet packet;
-    bzero(&packet, sizeof(packet));
-    packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES;
-    packet.packages.page = page;
+    struct network_af_unix_packet* packet = calloc(1, sizeof(struct network_af_unix_packet));
+    packet->type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES;
+    packet->packages.page = page;
     // Send the packet
-    if (giveme_af_unix_write(sfd, &packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
+    if (giveme_af_unix_write(sfd, packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
     {
         printf("Failed to send packet to server\n");
         return -1;
     }
 
     // Let's read back the publish response
-    struct network_af_unix_packet res_packet;
-    if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
+    struct network_af_unix_packet* res_packet = calloc(1, sizeof(struct network_af_unix_packet));
+    if (giveme_af_unix_read(sfd, res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
     {
         printf("Failed to receive response packet from server\n");
         return -1;
     }
 
-    memcpy(packages_res_out, &res_packet.packages_response.packages, sizeof(struct network_af_unix_packages_response_packages));
+    if(res_packet->type != NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES_RESPONSE)
+    {
+        printf("break here");
+    }
+
+    memcpy(packages_res_out, &res_packet->packages_response.packages, sizeof(struct network_af_unix_packages_response_packages));
     return 0;
 }
 
@@ -206,7 +210,7 @@ int giveme_download(int sfd, const char *package_name, struct network_af_unix_pa
 
 int giveme_make_fake_blockchain(int sfd, size_t total_blocks)
 {
-    struct network_af_unix_packet packet = {};
+    static struct network_af_unix_packet packet = {};
     packet.type = NETWORK_AF_UNIX_PACKET_TYPE_MAKE_FAKE_BLOCKCHAIN;
     packet.fake_blockchain.total_blocks = total_blocks;
     // Send the packet
@@ -214,7 +218,7 @@ int giveme_make_fake_blockchain(int sfd, size_t total_blocks)
         return -1;
 
     // Let's read back the publish response
-    struct network_af_unix_packet res_packet;
+    static struct network_af_unix_packet res_packet;
     if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
         return -1;
 
@@ -223,7 +227,7 @@ int giveme_make_fake_blockchain(int sfd, size_t total_blocks)
 
 int giveme_signup(int sfd, const char *name)
 {
-    struct network_af_unix_packet packet = {};
+    static struct network_af_unix_packet packet = {};
     packet.type = NETWORK_AF_UNIX_PACKET_TYPE_SIGNUP;
     strncpy(packet.signup.name, name, sizeof(packet.signup.name));
     // Send the packet
@@ -231,7 +235,7 @@ int giveme_signup(int sfd, const char *name)
         return -1;
 
     // Let's read back the publish response
-    struct network_af_unix_packet res_packet;
+    static struct network_af_unix_packet res_packet;
     if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
         return -1;
 
@@ -239,7 +243,7 @@ int giveme_signup(int sfd, const char *name)
 }
 int giveme_publish(int sfd, const char *filename, const char *package_name)
 {
-    struct network_af_unix_packet packet = {};
+    static struct network_af_unix_packet packet = {};
     packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PUBLISH_PACKAGE;
     strncpy(packet.publish.filename, realpath(filename, NULL), sizeof(packet.publish.filename));
     strncpy(packet.publish.package, package_name, sizeof(packet.publish.package));
@@ -249,7 +253,7 @@ int giveme_publish(int sfd, const char *filename, const char *package_name)
         return -1;
 
     // Let's read back the publish response
-    struct network_af_unix_packet res_packet;
+    static struct network_af_unix_packet res_packet;
     if (giveme_af_unix_read(sfd, &res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
         return -1;
 
@@ -274,7 +278,7 @@ int giveme_network_af_unix_handle_packet_publish(int sock, struct network_af_uni
 
     // We have a request from the client to publish a packet to the network
     // Issue a published response as a test
-    struct network_af_unix_packet res_packet = {};
+    static struct network_af_unix_packet res_packet = {};
     res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PUBLISH_PACKAGE_RESPONSE;
     res_packet.flags |= NETWORK_AF_UNIX_PACKET_FLAG_HAS_FRIENDLY_MESSAGE;
     sprintf(res_packet.message, "Your package %s has been published successfully", packet->publish.package);
@@ -304,7 +308,7 @@ int giveme_network_af_unix_handle_packet_signup(int sock, struct network_af_unix
     memcpy(&tcp_packet.data.publish_public_key.pub_key, giveme_public_key(), sizeof(tcp_packet.data.publish_public_key.pub_key));
     giveme_network_broadcast(&tcp_packet);
 
-    struct network_af_unix_packet res_packet = {};
+    static struct network_af_unix_packet res_packet = {};
     res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PUBLISH_PUBLIC_KEY_RESPONSE;
     res_packet.flags |= NETWORK_AF_UNIX_PACKET_FLAG_HAS_FRIENDLY_MESSAGE;
     sprintf(res_packet.message, "You have successfully signed up to the network as %s it can take 5-20 minutes before your able to be recognized and access your own account data with \"giveme info\" \n", packet->signup.name);
@@ -313,7 +317,7 @@ int giveme_network_af_unix_handle_packet_signup(int sock, struct network_af_unix
 
 int giveme_network_af_unix_handle_packet_my_info(int sock, struct network_af_unix_packet *packet)
 {
-    struct network_af_unix_packet res_packet = {};
+    static struct network_af_unix_packet res_packet = {};
     res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_INFO_RESPONSE;
     res_packet.flags |= NETWORK_AF_UNIX_PACKET_FLAG_HAS_FRIENDLY_MESSAGE;
     giveme_lock_chain();
@@ -325,7 +329,7 @@ int giveme_network_af_unix_handle_packet_my_info(int sock, struct network_af_uni
 
 int giveme_network_af_unix_handle_packet_package_download(int sock, struct network_af_unix_packet *packet)
 {
-    struct network_af_unix_packet res_packet = {};
+    static struct network_af_unix_packet res_packet = {};
 
     // Do we have the package the user is asking for?
     struct package *package = giveme_package_get_by_name(packet->package_download.package_name);
@@ -355,9 +359,9 @@ int giveme_network_af_unix_handle_packet_package_download(int sock, struct netwo
 
 int giveme_network_af_unix_handle_packet_packages(int sock, struct network_af_unix_packet *packet)
 {
-    static struct network_af_unix_packet res_packet = {};
-    bzero(&res_packet, sizeof(res_packet));
-    res_packet.type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES_RESPONSE;
+    struct network_af_unix_packet* res_packet = calloc(1, sizeof(struct network_af_unix_packet));
+
+    res_packet->type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES_RESPONSE;
     int page = packet->packages.page;
     int s_index = page * PACKAGE_MAX_PER_PAGE;
     int e_index = s_index + PACKAGE_MAX_PER_PAGE;
@@ -365,24 +369,24 @@ int giveme_network_af_unix_handle_packet_packages(int sock, struct network_af_un
     int count = 0;
     for (int i = s_index; i < e_index; i++)
     {
-        int res = giveme_packages_get_by_index(i, &res_packet.packages_response.packages.packages[count]);
+        int res = giveme_packages_get_by_index(i, &res_packet->packages_response.packages.packages[count]);
         if (res < 0)
         {
             break;
         }
 
-        res_packet.packages_response.packages.total++;
+        res_packet->packages_response.packages.total++;
         count++;
     }
     giveme_packages_unlock();
-    res_packet.packages_response.page = page;
-    giveme_af_unix_write(sock, &res_packet);
+    res_packet->packages_response.page = page;
+    giveme_af_unix_write(sock, res_packet);
     return 0;
 }
 
 int giveme_network_af_unix_handle_packet_my_awaiting_transactions(int sock, struct network_af_unix_packet *packet)
 {
-    struct network_af_unix_packet res_packet = {};
+    static struct network_af_unix_packet res_packet = {};
     struct network_awaiting_transaction *transaction = giveme_network_my_awaiting_transactions_get_by_index(0);
     for (int i = 0; i < AWAITING_TRANSACTION_MAX_PER_PAGE; i++)
     {
@@ -442,14 +446,14 @@ int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet
 int giveme_network_server_af_unix_read(int sock)
 {
     int res = 0;
-    struct network_af_unix_packet packet;
-    res = giveme_af_unix_read(sock, &packet);
+    struct network_af_unix_packet* packet = calloc(1, sizeof(struct network_af_unix_packet));
+    res = giveme_af_unix_read(sock, packet);
     if (res < 0)
         return res;
 
     giveme_blockchain_wait_until_ready();
     // We now have a packet lets handle it
-    return giveme_network_af_unix_handle_packet(sock, &packet);
+    return giveme_network_af_unix_handle_packet(sock, packet);
 }
 int giveme_af_unix_listen()
 {
