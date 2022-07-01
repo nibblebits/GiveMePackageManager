@@ -501,8 +501,8 @@ int giveme_network_listen()
         goto out;
     }
 
-	// Queue the accept action so clients can be accepted.
-	giveme_network_accept_action_queue();
+    // Start the accept thread.
+    giveme_network_accept_thread_start();
 
     network.dataexchange_listen_socket = giveme_tcp_network_listen(&network.dataexchange_listen_address, false, GIVEME_TCP_DATA_EXCHANGE_PORT, GIVEME_TCP_SERVER_MAX_CONNECTIONS);
     if (network.dataexchange_listen_socket < 0)
@@ -2725,25 +2725,17 @@ void giveme_network_process_action_queue()
     giveme_network_action_schedule(giveme_network_process_action, NULL, 0);
 }
 
-void giveme_network_accept_action(void *data_in, size_t d_size)
+void giveme_network_accepted_action(void *data_in, size_t d_size)
 {
 
-    struct network_connection_data *data = giveme_network_connection_data_new();
-    data->sock = giveme_tcp_network_accept(network.listen_socket, &data->addr);
-    if (data->sock < 0)
-    {
-        giveme_log("%s Failed to accept a new client\n", __FUNCTION__);
-        giveme_network_connection_data_free(data);
-        goto out;
-    }
-
+    struct network_connection_data *data = data_in;
     // Have they already connected to us ? If so then we need to drop them
     // one connection per node..
     if (giveme_network_ip_connected(&data->addr.sin_addr))
     {
         giveme_log("%s dropping accepted client who is already connected %s\n", __FUNCTION__, inet_ntoa(data->addr.sin_addr));
         giveme_network_connection_data_free(data);
-        goto out;
+        return;
     }
 
     data->last_contact = time(NULL);
@@ -2751,16 +2743,32 @@ void giveme_network_accept_action(void *data_in, size_t d_size)
     {
         giveme_network_connection_data_free(data);
     }
-out:
-    sleep(1);
-    // Requeue the action so it can be processed infinetly
-    giveme_network_accept_action_queue();
+}
+int giveme_network_accept_thread(struct queued_work *work)
+{
+    while (1)
+    {
+        struct network_connection_data *data = giveme_network_connection_data_new();
+        data->sock = giveme_tcp_network_accept(network.listen_socket, &data->addr);
+        if (data->sock < 0)
+        {
+            giveme_log("%s Failed to accept a new client\n", __FUNCTION__);
+            giveme_network_connection_data_free(data);
+            goto out;
+        }
+
+        // The actual work should be handled by the action thread.. Hopefully its processed fast enough!
+        giveme_network_action_schedule(giveme_network_accepted_action, data, sizeof(struct network_connection_data));
+    out:
+        sleep(1);
+    }
+    return 0;
+}
+void giveme_network_accept_thread_start()
+{
+   giveme_queue_work(giveme_network_accept_thread, NULL);
 }
 
-void giveme_network_accept_action_queue()
-{
-    giveme_network_action_schedule(giveme_network_accept_action, NULL, 0);
-}
 
 void giveme_network_initialize_connections()
 {

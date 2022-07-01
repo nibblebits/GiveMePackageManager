@@ -507,7 +507,7 @@ int giveme_network_listen();
 int giveme_network_action_queue_thread_start();
 void giveme_network_connection_connect_all_action_command_queue();
 void giveme_network_process_action_queue();
-void giveme_network_accept_action_queue();
+void giveme_network_accept_thread_start();
 void giveme_network_broadcast(struct giveme_tcp_packet *packet);
 void giveme_network_update_chain();
 int giveme_network_my_awaiting_transaction_add(struct network_awaiting_transaction *transaction);
