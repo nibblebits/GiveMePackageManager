@@ -396,6 +396,15 @@ struct network_awaiting_transaction
     struct giveme_tcp_packet packet;
 };
 
+
+typedef void (*NETWORK_ACTION_FUNCTION)(void* data, size_t size);
+struct network_action
+{
+    void* data;
+    size_t size;
+    NETWORK_ACTION_FUNCTION func;
+};
+
 struct network
 {
     // IP Addresses on the network vector of struct in_addr
@@ -409,6 +418,15 @@ struct network
     // we want to pull towards one last hash thats equal for everyone
     // Network will always download the chain to the most popular current last hash.
     struct network_last_hashes hashes;
+
+    // All network actions need to be added to the action queue for processing
+    // on a single thread. THis should prevent concurrency problems.
+    struct action_queue
+    {
+        pthread_mutex_t lock;
+        // vector of network_action
+        struct vector* action_vector;
+    } action_queue;
 
     struct network_transactions
     {
@@ -486,8 +504,10 @@ struct network
 
 void giveme_network_initialize();
 int giveme_network_listen();
-int giveme_network_connection_thread_start();
-int giveme_network_process_thread_start();
+int giveme_network_action_queue_thread_start();
+void giveme_network_connection_connect_all_action_command_queue();
+void giveme_network_process_action_queue();
+void giveme_network_accept_action_queue();
 void giveme_network_broadcast(struct giveme_tcp_packet *packet);
 void giveme_network_update_chain();
 int giveme_network_my_awaiting_transaction_add(struct network_awaiting_transaction *transaction);

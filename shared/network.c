@@ -49,9 +49,6 @@ static size_t packet_payload_sizes[] = {
 };
 
 struct network network;
-int giveme_network_accept_thread(struct queued_work *work);
-int giveme_network_connection_thread(struct queued_work *work);
-int giveme_network_process_thread(struct queued_work *work);
 
 bool giveme_network_connection_connected(struct network_connection *connection);
 int giveme_tcp_dataexchange_send_packet(int client, struct giveme_dataexchange_tcp_packet *packet);
@@ -61,6 +58,55 @@ struct network_connection_data *giveme_network_connection_data_new();
 int giveme_tcp_network_accept(int sock, struct sockaddr_in *client_out);
 int giveme_network_clear_transactions(struct network_transactions *transactions);
 int giveme_tcp_send_bytes(int client, void *ptr, size_t amount);
+
+void giveme_network_action_schedule(NETWORK_ACTION_FUNCTION func, void *data, size_t size)
+{
+    struct network_action action;
+    bzero(&action, sizeof(action));
+
+    // Data must be cloned this allows stack memory to be passed.
+    if (data)
+    {
+        action.data = malloc(size);
+        memcpy(action.data, data, size);
+        action.size = size;
+    }
+    action.func = func;
+
+    pthread_mutex_lock(&network.action_queue.lock);
+    vector_push(network.action_queue.action_vector, &action);
+    pthread_mutex_unlock(&network.action_queue.lock);
+}
+
+void giveme_network_action_execute(struct network_action *action)
+{
+    action->func(action->data, action->size);
+    free(action->data);
+}
+
+/**
+ * @brief All network actions must be done on this thread to avoid concurrency problems
+ * Push your network commands to this vector.
+ *
+ */
+int giveme_network_action_thread(struct queued_work *work)
+{
+    struct network_action *action = NULL;
+    vector_set_peek_pointer(network.action_queue.action_vector, 0);
+    pthread_mutex_lock(&network.action_queue.lock);
+    action = vector_peek(network.action_queue.action_vector);
+    pthread_mutex_unlock(&network.action_queue.lock);
+
+    while (action)
+    {
+        giveme_network_action_execute(action);
+        pthread_mutex_lock(&network.action_queue.lock);
+        action = vector_peek(network.action_queue.action_vector);
+        pthread_mutex_unlock(&network.action_queue.lock);
+    }
+
+    return 0;
+}
 
 /**
  * @brief Returns the packet payload size for the given packet.
@@ -412,6 +458,7 @@ int giveme_network_dataexchange_connection(struct queued_work *work)
 
     return res;
 }
+
 int giveme_network_dataexchange_accept_thread(struct queued_work *work)
 {
     while (1)
@@ -437,21 +484,9 @@ int giveme_network_dataexchange_accept_thread_start()
     return 0;
 }
 
-int giveme_network_accept_thread_start()
+int giveme_network_action_queue_thread_start()
 {
-    giveme_queue_work(giveme_network_accept_thread, NULL);
-    return 0;
-}
-
-int giveme_network_connection_thread_start()
-{
-    giveme_queue_work(giveme_network_connection_thread, NULL);
-    return 0;
-}
-
-int giveme_network_process_thread_start()
-{
-    giveme_queue_work(giveme_network_process_thread, NULL);
+    giveme_queue_work(giveme_network_action_thread, NULL);
     return 0;
 }
 
@@ -466,12 +501,8 @@ int giveme_network_listen()
         goto out;
     }
 
-    //  Start the accept thread
-    err = giveme_network_accept_thread_start();
-    if (err < 0)
-    {
-        goto out;
-    }
+	// Queue the accept action so clients can be accepted.
+	giveme_network_accept_action_queue();
 
     network.dataexchange_listen_socket = giveme_tcp_network_listen(&network.dataexchange_listen_address, false, GIVEME_TCP_DATA_EXCHANGE_PORT, GIVEME_TCP_SERVER_MAX_CONNECTIONS);
     if (network.dataexchange_listen_socket < 0)
@@ -554,7 +585,7 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
 
 int giveme_tcp_client_enable_blocking(int client)
 {
-    if(fcntl(client, F_SETFL, fcntl(client, F_GETFL) & ~O_NONBLOCK) < 0) 
+    if (fcntl(client, F_SETFL, fcntl(client, F_GETFL) & ~O_NONBLOCK) < 0)
     {
         giveme_log("%s failed to put the socket in enable blocking mode\n", __FUNCTION__);
         return -1;
@@ -563,10 +594,9 @@ int giveme_tcp_client_enable_blocking(int client)
     return 0;
 }
 
-
 int giveme_tcp_client_disable_blocking(int client)
 {
-    if(fcntl(client, F_SETFL, fcntl(client, F_GETFL) | O_NONBLOCK) < 0) 
+    if (fcntl(client, F_SETFL, fcntl(client, F_GETFL) | O_NONBLOCK) < 0)
     {
         giveme_log("%s failed to put the socket in non-blocking mode\n", __FUNCTION__);
         return -1;
@@ -574,7 +604,6 @@ int giveme_tcp_client_disable_blocking(int client)
 
     return 0;
 }
-
 
 int giveme_tcp_recv_bytes_no_block(int client, void *ptr, size_t amount)
 {
@@ -606,7 +635,7 @@ int giveme_tcp_recv_bytes_no_block(int client, void *ptr, size_t amount)
 
     while (amount_left > 0)
     {
-        res = recv(client, ptr+1, amount_left, MSG_WAITALL);
+        res = recv(client, ptr + 1, amount_left, MSG_WAITALL);
         if (res <= 0)
         {
             res = -1;
@@ -977,9 +1006,8 @@ int giveme_tcp_network_connect(struct in_addr addr, int port, int flags)
         return -1;
     }
 
-
     int synRetries = 2; // Send a total of 3 SYN packets => Timeout ~7s
-    if(setsockopt(sockfd, IPPROTO_TCP, TCP_SYNCNT, &synRetries, sizeof(synRetries)) < 0)
+    if (setsockopt(sockfd, IPPROTO_TCP, TCP_SYNCNT, &synRetries, sizeof(synRetries)) < 0)
     {
         giveme_log("%s issue setting the maximum SYN packets\n", __FUNCTION__);
         return -1;
@@ -988,7 +1016,7 @@ int giveme_tcp_network_connect(struct in_addr addr, int port, int flags)
     // connect the client socket to server socket
     if (connect(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
     {
-          giveme_log("%s connection with the server failed...\n", __FUNCTION__);
+        giveme_log("%s connection with the server failed...\n", __FUNCTION__);
         return -1;
     }
 
@@ -1068,14 +1096,26 @@ int giveme_network_connect()
     return res;
 }
 
-int giveme_network_connection_thread(struct queued_work *work)
+void giveme_network_connection_connect_all_action_command_queue();
+void giveme_network_connection_connect_all_action(void *data, size_t d_size)
 {
-    while (1)
-    {
-        giveme_network_connect();
-        sleep(5);
-    }
-    return 0;
+
+    giveme_network_connect();
+    sleep(5);
+
+    // We must requeue ourselves
+    giveme_network_connection_connect_all_action_command_queue();
+}
+
+/**
+ * @brief Queues the connection command so that it will be added to the action queue.
+ * Note this command will readd its self to the queue after exectuting, this results
+ * in an infinite operation.
+ *
+ */
+void giveme_network_connection_connect_all_action_command_queue()
+{
+    giveme_network_action_schedule(giveme_network_connection_connect_all_action, NULL, 0);
 }
 
 void giveme_network_disconnect(struct network_connection *connection)
@@ -1377,24 +1417,24 @@ void giveme_network_my_awaiting_transactions_remove_succeeded()
     }
 }
 
-const char* giveme_network_awaiting_transaction_state_string(struct network_awaiting_transaction* transaction)
+const char *giveme_network_awaiting_transaction_state_string(struct network_awaiting_transaction *transaction)
 {
-    const char* ret = "Unknown";
+    const char *ret = "Unknown";
     if (transaction->state == GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_FAILED)
     {
         ret = "failed";
     }
-    else if(transaction->state == GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_SUCCESS)
+    else if (transaction->state == GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_SUCCESS)
     {
         ret = "success";
     }
-    else if(transaction->state == GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_PENDING)
+    else if (transaction->state == GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_PENDING)
     {
         ret = "pending";
     }
     return ret;
 }
-struct network_awaiting_transaction* giveme_network_my_awaiting_transactions_get_by_index(int index)
+struct network_awaiting_transaction *giveme_network_my_awaiting_transactions_get_by_index(int index)
 {
     if (index >= network.my_awaiting_transactions.total)
     {
@@ -1403,7 +1443,6 @@ struct network_awaiting_transaction* giveme_network_my_awaiting_transactions_get
 
     return &network.my_awaiting_transactions.data[index];
 }
-
 
 struct network_awaiting_transaction *giveme_network_my_awaiting_transactions_get_by_packet_id(int id)
 {
@@ -2529,7 +2568,7 @@ void giveme_network_update_chain_from_found_peers()
                 // lied to us..
                 vector_pop_at_data_address(network.blockchain.peers_with_blocks, peer);
                 if (last_peer)
-                
+
                 {
                     vector_pop_at_data_address(network.blockchain.peers_with_blocks, last_peer);
                 }
@@ -2630,88 +2669,97 @@ bool giveme_network_time_to_forward_ports()
     // Every hour we forward the ports again
     return (time(NULL) - network.last_upnp_forward) > 3600;
 }
-
-int giveme_network_process_thread(struct queued_work *work)
+void giveme_network_process_action_queue();
+void giveme_network_process_action(void *data, size_t d_size)
 {
-    while (1)
-    {
-        if (giveme_network_time_to_forward_ports())
-        {
-            giveme_network_upnp_port_forward();
-        }
 
-        // Kept getting issues with lock order. We will lock in the actual loop
-        // this may result in slower operations than expected.
-        giveme_lock_chain();
-        giveme_network_ping();
-        if (network.blockchain.chain_requesting_update && (time(NULL) - network.blockchain.last_chain_update_request) > 30)
-        {
-            // We have given 30 seconds for people to tell us they are able to update our chain...
-            // Now its time to preform the update.
-            giveme_network_update_chain_from_found_peers();
-            network.blockchain.chain_requesting_update = false;
-        }
-        else if (giveme_network_needs_chain_update_do_lock() &&
-                 network.total_connected > 0 &&
-                 (time(NULL) - network.blockchain.last_chain_update_request) > GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS)
-        {
-            // Let's update our chain to the latest one
-            giveme_network_update_chain();
-            network.blockchain.last_chain_update_request = time(NULL);
-            network.blockchain.chain_requesting_update = true;
-        }
-        else if (time(NULL) - network.blockchain.last_chain_update_request > 120)
-        {
-            // Nobody updated the chain and its been 120 seconds?
-            // Then we are probably up to date... lets give the blockchain ready signal..
-            giveme_blockchain_give_ready_signal();
-            network.blockchain.chain_requesting_update = false;
-        }
-        else if (time(NULL) - network.blockchain.last_known_hashes_update > 5)
-        {
-            giveme_network_known_hashes_lock();
-            giveme_network_update_known_hashes();
-            giveme_network_known_hashes_unlock();
-            network.blockchain.last_known_hashes_update = time(NULL);
-        }
-        giveme_network_packets_process();
-        giveme_network_make_block_if_possible();
-        giveme_unlock_chain();
-        usleep(10);
+    if (giveme_network_time_to_forward_ports())
+    {
+        giveme_network_upnp_port_forward();
     }
-    return 0;
+
+    // Kept getting issues with lock order. We will lock in the actual loop
+    // this may result in slower operations than expected.
+    giveme_lock_chain();
+    giveme_network_ping();
+    if (network.blockchain.chain_requesting_update && (time(NULL) - network.blockchain.last_chain_update_request) > 30)
+    {
+        // We have given 30 seconds for people to tell us they are able to update our chain...
+        // Now its time to preform the update.
+        giveme_network_update_chain_from_found_peers();
+        network.blockchain.chain_requesting_update = false;
+    }
+    else if (giveme_network_needs_chain_update_do_lock() &&
+             network.total_connected > 0 &&
+             (time(NULL) - network.blockchain.last_chain_update_request) > GIVEME_NETWORK_UPDATE_CHAIN_REQUEST_SECONDS)
+    {
+        // Let's update our chain to the latest one
+        giveme_network_update_chain();
+        network.blockchain.last_chain_update_request = time(NULL);
+        network.blockchain.chain_requesting_update = true;
+    }
+    else if (time(NULL) - network.blockchain.last_chain_update_request > 120)
+    {
+        // Nobody updated the chain and its been 120 seconds?
+        // Then we are probably up to date... lets give the blockchain ready signal..
+        giveme_blockchain_give_ready_signal();
+        network.blockchain.chain_requesting_update = false;
+    }
+    else if (time(NULL) - network.blockchain.last_known_hashes_update > 5)
+    {
+        giveme_network_known_hashes_lock();
+        giveme_network_update_known_hashes();
+        giveme_network_known_hashes_unlock();
+        network.blockchain.last_known_hashes_update = time(NULL);
+    }
+    giveme_network_packets_process();
+    giveme_network_make_block_if_possible();
+    giveme_unlock_chain();
+    usleep(10);
+
+    // We must requeue this action so that it will be processed infinetly
+    giveme_network_process_action_queue();
+}
+void giveme_network_process_action_queue()
+{
+    giveme_network_action_schedule(giveme_network_process_action, NULL, 0);
 }
 
-int giveme_network_accept_thread(struct queued_work *work)
+void giveme_network_accept_action(void *data_in, size_t d_size)
 {
-    while (1)
+
+    struct network_connection_data *data = giveme_network_connection_data_new();
+    data->sock = giveme_tcp_network_accept(network.listen_socket, &data->addr);
+    if (data->sock < 0)
     {
-        struct network_connection_data *data = giveme_network_connection_data_new();
-        data->sock = giveme_tcp_network_accept(network.listen_socket, &data->addr);
-        if (data->sock < 0)
-        {
-            giveme_log("%s Failed to accept a new client\n", __FUNCTION__);
-            giveme_network_connection_data_free(data);
-            continue;
-        }
-
-        // Have they already connected to us ? If so then we need to drop them
-        // one connection per node..
-        if (giveme_network_ip_connected(&data->addr.sin_addr))
-        {
-            giveme_log("%s dropping accepted client who is already connected %s\n", __FUNCTION__, inet_ntoa(data->addr.sin_addr));
-            giveme_network_connection_data_free(data);
-            continue;
-        }
-
-        data->last_contact = time(NULL);
-        if (giveme_network_connection_add(data) < 0)
-        {
-            giveme_network_connection_data_free(data);
-        }
-        sleep(1);
+        giveme_log("%s Failed to accept a new client\n", __FUNCTION__);
+        giveme_network_connection_data_free(data);
+        goto out;
     }
-    return 0;
+
+    // Have they already connected to us ? If so then we need to drop them
+    // one connection per node..
+    if (giveme_network_ip_connected(&data->addr.sin_addr))
+    {
+        giveme_log("%s dropping accepted client who is already connected %s\n", __FUNCTION__, inet_ntoa(data->addr.sin_addr));
+        giveme_network_connection_data_free(data);
+        goto out;
+    }
+
+    data->last_contact = time(NULL);
+    if (giveme_network_connection_add(data) < 0)
+    {
+        giveme_network_connection_data_free(data);
+    }
+out:
+    sleep(1);
+    // Requeue the action so it can be processed infinetly
+    giveme_network_accept_action_queue();
+}
+
+void giveme_network_accept_action_queue()
+{
+    giveme_network_action_schedule(giveme_network_accept_action, NULL, 0);
 }
 
 void giveme_network_initialize_connections()
@@ -2884,6 +2932,15 @@ void giveme_network_initialize()
         res = -1;
         goto out;
     }
+
+    if (pthread_mutex_init(&network.action_queue.lock, NULL) != 0)
+    {
+        giveme_log("Failed to initialize network action queue mutex\n");
+        res = -1;
+        goto out;
+    }
+
+    network.action_queue.action_vector = vector_create(sizeof(struct network_action));
 
     if (pthread_mutex_init(&network.hashes.lock, NULL) != 0)
     {

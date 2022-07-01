@@ -55,10 +55,15 @@ int main(int argc, char *argv[])
 	bool mine_genesis = (argc > 1 && S_EQ(argv[1], "genesis"));
 	initialize(mine_genesis);
 	giveme_thread_pool_start();
+	giveme_network_action_queue_thread_start();
 	giveme_network_listen();
 	giveme_network_upnp_port_forward();
-	giveme_network_connection_thread_start();
-	giveme_network_process_thread_start();
+	// Queue the connection operation
+	giveme_network_connection_connect_all_action_command_queue();
+	// Queue the process action queue.
+	giveme_network_process_action_queue();
+
+
 	giveme_af_unix_listen();
 
 	return 0;

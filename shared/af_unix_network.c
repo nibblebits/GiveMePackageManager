@@ -107,7 +107,7 @@ int giveme_send_message(int sfd, const char *message)
     return 0;
 }
 
-int giveme_my_awaiting_transactions(int sfd, struct network_af_unix_my_awaiting_transactions_response* packet_out)
+int giveme_my_awaiting_transactions(int sfd, struct network_af_unix_my_awaiting_transactions_response *packet_out)
 {
     static struct network_af_unix_packet packet = {};
     packet.type = NETWORK_AF_UNIX_PACKET_TYPE_MY_AWAITING_TRANSACTIONS;
@@ -157,7 +157,7 @@ struct blockchain_individual giveme_info(int sfd)
 
 int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_packages *packages_res_out)
 {
-    struct network_af_unix_packet* packet = calloc(1, sizeof(struct network_af_unix_packet));
+    struct network_af_unix_packet *packet = calloc(1, sizeof(struct network_af_unix_packet));
     packet->type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES;
     packet->packages.page = page;
     // Send the packet
@@ -168,14 +168,14 @@ int giveme_packages(int sfd, int page, struct network_af_unix_packages_response_
     }
 
     // Let's read back the publish response
-    struct network_af_unix_packet* res_packet = calloc(1, sizeof(struct network_af_unix_packet));
+    struct network_af_unix_packet *res_packet = calloc(1, sizeof(struct network_af_unix_packet));
     if (giveme_af_unix_read(sfd, res_packet) != NETWORK_AF_UNIX_PACKET_IO_OKAY)
     {
         printf("Failed to receive response packet from server\n");
         return -1;
     }
 
-    if(res_packet->type != NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES_RESPONSE)
+    if (res_packet->type != NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES_RESPONSE)
     {
         printf("break here");
     }
@@ -359,7 +359,7 @@ int giveme_network_af_unix_handle_packet_package_download(int sock, struct netwo
 
 int giveme_network_af_unix_handle_packet_packages(int sock, struct network_af_unix_packet *packet)
 {
-    struct network_af_unix_packet* res_packet = calloc(1, sizeof(struct network_af_unix_packet));
+    struct network_af_unix_packet *res_packet = calloc(1, sizeof(struct network_af_unix_packet));
 
     res_packet->type = NETWORK_AF_UNIX_PACKET_TYPE_PACKAGES_RESPONSE;
     int page = packet->packages.page;
@@ -394,12 +394,11 @@ int giveme_network_af_unix_handle_packet_my_awaiting_transactions(int sock, stru
         if (!transaction)
             break;
 
-        if (transaction->state != GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_PENDING 
-            && transaction->state != GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_FAILED)
+        if (transaction->state != GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_PENDING && transaction->state != GIVEME_NETWORK_AWAITING_TRANSACTION_STATE_FAILED)
         {
             continue;
         }
-        
+
         memcpy(&res_packet.my_awaiting_transactions_response.transactions[i], transaction, sizeof(struct network_awaiting_transaction));
         res_packet.my_awaiting_transactions_response.total++;
     }
@@ -446,7 +445,7 @@ int giveme_network_af_unix_handle_packet(int sock, struct network_af_unix_packet
 int giveme_network_server_af_unix_read(int sock)
 {
     int res = 0;
-    struct network_af_unix_packet* packet = calloc(1, sizeof(struct network_af_unix_packet));
+    struct network_af_unix_packet *packet = calloc(1, sizeof(struct network_af_unix_packet));
     res = giveme_af_unix_read(sock, packet);
     if (res < 0)
         return res;
@@ -457,34 +456,35 @@ int giveme_network_server_af_unix_read(int sock)
 }
 int giveme_af_unix_listen()
 {
-    unlink(GIVEME_CLIENT_SERVER_PATH);
-    int sfd, cfd;
-    struct sockaddr_un my_addr, peer_addr;
-    socklen_t peer_addr_size;
-
-    sfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sfd == -1)
-        handle_error("Issue creating socket");
-
-    memset(&my_addr, 0, sizeof(struct sockaddr_un));
-    /* Clear structure */
-    my_addr.sun_family = AF_UNIX;
-    strncpy(my_addr.sun_path, GIVEME_CLIENT_SERVER_PATH,
-            sizeof(my_addr.sun_path) - 1);
-
-    if (bind(sfd, (struct sockaddr *)&my_addr,
-             sizeof(struct sockaddr_un)) == -1)
-        handle_error("Issue binding to socket");
-
-    if (listen(sfd, LISTEN_BACKLOG) == -1)
-        handle_error("Issue listening on socket");
-
-    /* Now we can accept incoming connections one
-       at a time using accept(2) */
-
-    peer_addr_size = sizeof(struct sockaddr_un);
     while (1)
     {
+        unlink(GIVEME_CLIENT_SERVER_PATH);
+        int sfd, cfd;
+        struct sockaddr_un my_addr, peer_addr;
+        socklen_t peer_addr_size;
+
+        sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (sfd == -1)
+            handle_error("Issue creating socket");
+
+        memset(&my_addr, 0, sizeof(struct sockaddr_un));
+        /* Clear structure */
+        my_addr.sun_family = AF_UNIX;
+        strncpy(my_addr.sun_path, GIVEME_CLIENT_SERVER_PATH,
+                sizeof(my_addr.sun_path) - 1);
+
+        if (bind(sfd, (struct sockaddr *)&my_addr,
+                 sizeof(struct sockaddr_un)) == -1)
+            handle_error("Issue binding to socket");
+
+        if (listen(sfd, 0) == -1)
+            handle_error("Issue listening on socket");
+
+        /* Now we can accept incoming connections one
+           at a time using accept(2) */
+
+        peer_addr_size = sizeof(struct sockaddr_un);
+
         cfd = accept(sfd, (struct sockaddr *)&peer_addr,
                      &peer_addr_size);
         if (cfd == -1)
