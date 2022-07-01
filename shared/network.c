@@ -99,6 +99,10 @@ int giveme_network_action_thread(struct queued_work *work)
         struct network_action *action = NULL;
         pthread_mutex_lock(&network.action_queue.lock);
         action = vector_back_or_null(network.action_queue.action_vector);
+        if (action)
+        {
+            vector_pop(network.action_queue.action_vector);
+        }
         pthread_mutex_unlock(&network.action_queue.lock);
         if (action)
         {
