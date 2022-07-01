@@ -2766,7 +2766,7 @@ int giveme_network_accept_thread(struct queued_work *work)
         // The actual work should be handled by the action thread.. Hopefully its processed fast enough!
         giveme_network_action_schedule(giveme_network_accepted_action, data, sizeof(struct network_connection_data));
     out:
-        sleep(1);
+        usleep(10);
     }
     return 0;
 }
