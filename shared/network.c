@@ -81,7 +81,10 @@ void giveme_network_action_schedule(NETWORK_ACTION_FUNCTION func, void *data, si
 void giveme_network_action_execute(struct network_action *action)
 {
     action->func(action->data, action->size);
-    free(action->data);
+    if (action->data)
+    {
+        free(action->data);
+    }
 }
 
 /**
