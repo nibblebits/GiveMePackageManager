@@ -64,11 +64,9 @@ void giveme_network_action_schedule(NETWORK_ACTION_FUNCTION func, void *data, si
     struct network_action action;
     bzero(&action, sizeof(action));
 
-    // Data must be cloned this allows stack memory to be passed.
     if (data)
     {
-        action.data = malloc(size);
-        memcpy(action.data, data, size);
+        action.data = data;
         action.size = size;
     }
     action.func = func;
@@ -81,11 +79,7 @@ void giveme_network_action_schedule(NETWORK_ACTION_FUNCTION func, void *data, si
 void giveme_network_action_execute(struct network_action *action)
 {
     action->func(action->data, action->size);
-    if (action->data)
-    {
-        printf("%p\n", action);
-        free(action->data);
-    }
+
 }
 
 /**
