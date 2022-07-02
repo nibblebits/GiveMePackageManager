@@ -107,7 +107,7 @@ int giveme_network_action_thread(struct queued_work *work)
         {
             giveme_network_action_execute(&saction);
         }
-        sleep(1);
+        usleep(10);
     }
 
     return 0;
