@@ -1106,8 +1106,6 @@ void giveme_network_connection_connect_all_action(void *data, size_t d_size)
 {
 
     giveme_network_connect();
-    sleep(5);
-
     // We must requeue ourselves
     giveme_network_connection_connect_all_action_command_queue();
 }
