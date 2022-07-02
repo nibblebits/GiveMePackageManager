@@ -74,7 +74,7 @@ void giveme_network_action_schedule(NETWORK_ACTION_FUNCTION func, void *data, si
     action.func = func;
 
     pthread_mutex_lock(&network.action_queue.lock);
-    vector_push(network.action_queue.action_vector, &action);
+    vector_push_at(network.action_queue.action_vector, 0, &action);
     pthread_mutex_unlock(&network.action_queue.lock);
 }
 
