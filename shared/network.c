@@ -83,6 +83,7 @@ void giveme_network_action_execute(struct network_action *action)
     action->func(action->data, action->size);
     if (action->data)
     {
+        printf("%p\n", action);
         free(action->data);
     }
 }
