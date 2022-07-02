@@ -1064,6 +1064,12 @@ int giveme_network_connect_to_ip(struct in_addr ip)
 }
 int giveme_network_connect()
 {
+    // If not much time has passed we will wait..
+    if (time(NULL) - network.last_attempt_for_new_connections < 5)
+    {
+        return 0;
+    }
+
     int res = 0;
 
     // We have to at several occasions in this function lock the mutex
@@ -1098,6 +1104,7 @@ int giveme_network_connect()
         pthread_mutex_unlock(&network.ip_address_lock);
     }
 
+    network.last_attempt_for_new_connections = time(NULL);
     return res;
 }
 

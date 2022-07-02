@@ -413,6 +413,8 @@ struct network
 
     struct network_connection connections[GIVEME_TCP_SERVER_MAX_CONNECTIONS];
     atomic_int total_connected;
+    // The time when we last attempted to connect to a host
+    time_t last_attempt_for_new_connections;
 
     // The last hashes that are known to the network for all connected peers
     // we want to pull towards one last hash thats equal for everyone
