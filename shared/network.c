@@ -97,17 +97,21 @@ int giveme_network_action_thread(struct queued_work *work)
 {
     while (1)
     {
+        // We use a stack action because we dont want to hold a lock for an entire
+        // execution of the action where memory could easily be spilled and shifted. 
+        struct network_action saction;
         struct network_action *action = NULL;
         pthread_mutex_lock(&network.action_queue.lock);
         action = vector_back_or_null(network.action_queue.action_vector);
         if (action)
         {
+            memcpy(&saction, action, sizeof(saction));
             vector_pop(network.action_queue.action_vector);
         }
         pthread_mutex_unlock(&network.action_queue.lock);
         if (action)
         {
-            giveme_network_action_execute(action);
+            giveme_network_action_execute(&saction);
         }
         sleep(1);
     }
