@@ -1984,7 +1984,9 @@ out:
 
 void giveme_network_broadcast_block(struct block *block)
 {
-    struct giveme_tcp_packet packet = {};
+    struct giveme_tcp_packet packet;
+    bzero(&packet, sizeof(packet));
+
     packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK;
     memcpy(&packet.data.verified_block.block, block, sizeof(packet.data.verified_block.block));
     giveme_network_broadcast(&packet);
@@ -1994,6 +1996,7 @@ void giveme_network_update_chain()
 {
     giveme_log("%s asking the network for the most up to date chain\n", __FUNCTION__);
     struct giveme_tcp_packet update_chain_packet;
+    bzero(&update_chain_packet, sizeof(update_chain_packet));
     update_chain_packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN;
     memcpy(update_chain_packet.data.update_chain.last_hash, giveme_blockchain_block_hash(giveme_blockchain_back()), sizeof(update_chain_packet.data.update_chain.last_hash));
     giveme_network_broadcast(&update_chain_packet);
