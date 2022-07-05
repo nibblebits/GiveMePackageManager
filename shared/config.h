@@ -55,6 +55,8 @@
 
 #define GIVEME_TCP_PORT 10287
 #define GIVEME_TCP_DATA_EXCHANGE_PORT 10288
+// Used for transmission between socket client and server.
+#define GIVEME_LOCAL_EXCHANGE_PORT 10289
 
 // We only ever turn on TCP when we are expecting someone, therefore we wont allow any queuing of any kind
 // first to chat with us gets priority

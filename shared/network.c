@@ -575,14 +575,16 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
 {
     int res = 0;
     size_t amount_left = amount;
+    size_t amount_written = 0;
     while (amount_left > 0)
     {
-        res = write(client, ptr, amount_left);
+        res = write(client, ptr+amount_written, amount_left);
         if (res < 0)
         {
             giveme_log("%s issue sending bytes err=%i\n", __FUNCTION__, errno);
             return res;
         }
+        amount_written += res;
         amount_left -= res;
     }
     return res;
@@ -669,14 +671,16 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount, size_t timeout_s
 
     giveme_tcp_client_enable_blocking(client);
 
+    size_t amount_read = 0;
     while (amount_left > 0)
     {
-        res = recv(client, ptr, amount_left, MSG_WAITALL);
+        res = recv(client, ptr+amount_read, amount_left, MSG_WAITALL);
         if (res <= 0)
         {
             res = -1;
             return res;
         }
+        amount_read += res;
         amount_left -= res;
     }
     return res;

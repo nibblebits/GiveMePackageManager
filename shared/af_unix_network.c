@@ -27,22 +27,37 @@
 int giveme_af_unix_connect()
 {
     int sfd, cfd;
-    struct sockaddr_un serv_addr, peer_addr;
+    struct sockaddr_in servaddr, peer_addr;
     socklen_t peer_addr_size;
 
-    sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    sfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sfd == -1)
         handle_error("Issue creating socket");
 
-    memset(&serv_addr, 0, sizeof(struct sockaddr_un));
-    /* Clear structure */
-    serv_addr.sun_family = AF_UNIX;
-    strncpy(serv_addr.sun_path, GIVEME_CLIENT_SERVER_PATH,
-            sizeof(serv_addr.sun_path) - 1);
+    memset(&servaddr, 0, sizeof(struct sockaddr_in));
 
-    if (connect(sfd, (struct sockaddr *)&serv_addr,
-                strlen(serv_addr.sun_path) + sizeof(serv_addr.sun_family)) == -1)
-        handle_error("Issue connecting to socket");
+    struct in_addr local_ip;
+    if (inet_aton("127.0.0.1", &local_ip) == 0)
+    {
+        giveme_log("inet_aton() failed\n");
+    }
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr = local_ip;
+    servaddr.sin_port = htons(GIVEME_LOCAL_EXCHANGE_PORT);
+
+    int _true = 1;
+    if (setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &_true, sizeof(int)) < 0)
+    {
+        handle_error("Failed to set socket reusable option\n");
+        return -1;
+    }
+
+    // connect the client socket to server socket
+    if (connect(sfd, (const struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
+    {
+        handle_error("connection with the server failed...\n");
+        return -1;
+    }
 
     return sfd;
 }
@@ -50,12 +65,15 @@ int giveme_af_unix_connect()
 int giveme_af_unix_write(int sfd, struct network_af_unix_packet *packet)
 {
     int res = 0;
+    void* packet_void_ptr = packet;
     size_t amount_to_write = sizeof(struct network_af_unix_packet);
+    size_t amount_written = 0;
     while (amount_to_write > 0)
     {
-        res = send(sfd, packet, amount_to_write, 0);
+        res = write(sfd, packet_void_ptr+amount_written, amount_to_write);
         if (res == -1)
             break;
+        amount_written += res;
         amount_to_write -= res;
     }
 
@@ -68,13 +86,17 @@ int giveme_af_unix_write(int sfd, struct network_af_unix_packet *packet)
 
 int giveme_af_unix_read(int sfd, struct network_af_unix_packet *packet_out)
 {
+    void* packet_out_void = packet_out;
     int res = 0;
     size_t amount_to_read = sizeof(struct network_af_unix_packet);
+    size_t amount_read = 0;
     while (amount_to_read > 0)
     {
-        res = recv(sfd, packet_out, amount_to_read, 0);
+        res = read(sfd, packet_out_void+amount_read, amount_to_read);
         if (res == -1)
             break;
+        
+        amount_read += res;
         amount_to_read -= res;
     }
 
@@ -456,34 +478,45 @@ int giveme_network_server_af_unix_read(int sock)
 }
 int giveme_af_unix_listen()
 {
+    int sfd, cfd;
+    struct sockaddr_in servaddr, peer_addr;
+    socklen_t peer_addr_size;
+
+    memset(&servaddr, 0, sizeof(struct sockaddr_in));
+    // assign IP, PORT
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    servaddr.sin_port = htons(GIVEME_LOCAL_EXCHANGE_PORT);
+
+    sfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sfd == -1)
+        handle_error("Issue creating socket");
+
+    int _true = 1;
+    if (setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &_true, sizeof(int)) < 0)
+    {
+        handle_error("Failed to set socket reusable option\n");
+        return -1;
+    }
+
+    // Binding newly created socket to given IP
+    if ((bind(sfd, (struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
+    {
+        handle_error("server socket bind failed...\n");
+        return -1;
+    }
+
+    if ((listen(sfd, 1)) != 0)
+    {
+        handle_error("TCP Server Listen failed...\n");
+        return -1;
+    }
+
+    peer_addr_size = sizeof(struct sockaddr_in);
     while (1)
     {
-        unlink(GIVEME_CLIENT_SERVER_PATH);
-        int sfd, cfd;
-        struct sockaddr_un my_addr, peer_addr;
-        socklen_t peer_addr_size;
-
-        sfd = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (sfd == -1)
-            handle_error("Issue creating socket");
-
-        memset(&my_addr, 0, sizeof(struct sockaddr_un));
-        /* Clear structure */
-        my_addr.sun_family = AF_UNIX;
-        strncpy(my_addr.sun_path, GIVEME_CLIENT_SERVER_PATH,
-                sizeof(my_addr.sun_path) - 1);
-
-        if (bind(sfd, (struct sockaddr *)&my_addr,
-                 sizeof(struct sockaddr_un)) == -1)
-            handle_error("Issue binding to socket");
-
-        if (listen(sfd, 0) == -1)
-            handle_error("Issue listening on socket");
-
         /* Now we can accept incoming connections one
            at a time using accept(2) */
-
-        peer_addr_size = sizeof(struct sockaddr_un);
 
         cfd = accept(sfd, (struct sockaddr *)&peer_addr,
                      &peer_addr_size);
@@ -494,6 +527,6 @@ int giveme_af_unix_listen()
 
         // Our AF_UNIX protocol will allow for a one time message exchange then we will close
         // the connection.
-        close(cfd);
+      //  close(cfd);
     }
 }
