@@ -886,13 +886,13 @@ void giveme_network_load_ips()
 
     // giveme_network_ip_address_add(addr);
 
-    if (inet_aton("67.205.184.222", &addr) == 0)
+    if (inet_aton("137.184.101.59", &addr) == 0)
     {
         giveme_log("inet_aton() failed\n");
     }
     giveme_network_ip_address_add(addr);
 
-    if (inet_aton("159.223.155.21", &addr) == 0)
+    if (inet_aton("159.233.114.44", &addr) == 0)
     {
         giveme_log("inet_aton() failed\n");
     }
