@@ -628,6 +628,7 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
     int res = 0;
     size_t amount_left = amount;
     size_t amount_written = 0;
+    size_t count = 0;
     while (amount_left > 0)
     {
         res = write(client, ptr + amount_written, amount_left);
@@ -636,8 +637,14 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
             giveme_log("%s issue sending bytes err=%i\n", __FUNCTION__, errno);
             return res;
         }
+
+        if (count > 1000)
+        {
+            giveme_log("%s stuck in loop\n", __FUNCTION__);
+        }
         amount_written += res;
         amount_left -= res;
+        count++;
     }
     return res;
 }
