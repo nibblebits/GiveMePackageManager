@@ -38,6 +38,7 @@
 //     GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN,
 //     GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE,
 //     GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE,
+//     GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOAD_PACKAGE_AS_HOST,
 static size_t packet_payload_sizes[] = {
     sizeof(struct giveme_tcp_packet_ping),
     sizeof(struct giveme_tcp_packet_publish_package),
@@ -46,6 +47,7 @@ static size_t packet_payload_sizes[] = {
     sizeof(struct giveme_tcp_packet_update_chain),
     sizeof(struct giveme_tcp_packet_update_chain_response),
     sizeof(struct giveme_tcp_packet_package_downloaded),
+    sizeof(struct giveme_tcp_packet_download_as_host_request)
 };
 
 struct network network;
@@ -58,6 +60,11 @@ struct network_connection_data *giveme_network_connection_data_new();
 int giveme_tcp_network_accept(int sock, struct sockaddr_in *client_out);
 int giveme_network_clear_transactions(struct network_transactions *transactions);
 int giveme_tcp_send_bytes(int client, void *ptr, size_t amount);
+struct network_package_download *giveme_network_downloads_find(const char *filehash);
+int giveme_network_download_process_package_chunk(int sock, struct network_package_download *download, struct giveme_dataexchange_tcp_packet *packet, CHUNK_MAP_ENTRY *chunk_entry_out);
+bool giveme_network_download_is_complete(struct network_package_download *download);
+int giveme_finalize_download(struct network_package_download *download);
+void giveme_network_download_remove_and_free(struct network_package_download *download);
 
 void giveme_network_action_schedule(NETWORK_ACTION_FUNCTION func, void *data, size_t size)
 {
@@ -79,7 +86,6 @@ void giveme_network_action_schedule(NETWORK_ACTION_FUNCTION func, void *data, si
 void giveme_network_action_execute(struct network_action *action)
 {
     action->func(action->data, action->size);
-
 }
 
 /**
@@ -92,7 +98,7 @@ int giveme_network_action_thread(struct queued_work *work)
     while (1)
     {
         // We use a stack action because we dont want to hold a lock for an entire
-        // execution of the action where memory could easily be spilled and shifted. 
+        // execution of the action where memory could easily be spilled and shifted.
         struct network_action saction;
         struct network_action *action = NULL;
         pthread_mutex_lock(&network.action_queue.lock);
@@ -422,6 +428,48 @@ void giveme_network_dataexchange_connection_close(struct network_connection_data
     free(conn);
 }
 
+/**
+ * @brief Usually the send chunk packet is read with blocking as soon asa REQUEST_CHUNK has been sent.
+ * However sometimes people are behind routers so would rather upload to us.
+ *
+ * @param packet
+ * @param data
+ * @return int
+ */
+int giveme_network_dataexchange_handle_package_send_chunk(struct giveme_dataexchange_tcp_packet *packet, struct network_connection_data *data)
+{
+    int res = 0;
+    const char *package_hash = packet->package_send_chunk.package.data_hash;
+    struct network_package_download *download = giveme_network_downloads_find(package_hash);
+    if (!download)
+    {
+        giveme_log("%s somebody tried to send us a chunk for a package we are not downloading. It of course has been ignored\n", __FUNCTION__);
+        return -1;
+    }
+
+    struct package *package = download->info.package;
+
+    CHUNK_MAP_ENTRY chunk_entry = 0;
+    res = giveme_network_download_process_package_chunk(data->sock, download, packet, &chunk_entry);
+    if (res < 0)
+    {
+        giveme_log("%s we failed to process the package chunk for our download\n", __FUNCTION__);
+        goto out;
+    }
+
+    if (giveme_network_download_is_complete(download))
+    {
+        giveme_log("%s the file was downloaded successfully into temporary file %s\n", __FUNCTION__, download->info.download.tmp_filename);
+        giveme_log("%s moving to package directory\n", __FUNCTION__);
+        res = giveme_finalize_download(download);
+        giveme_network_download_remove_and_free(download);
+    }
+
+    
+out:
+    return 0;
+}
+
 int giveme_network_dataexchange_connection(struct queued_work *work)
 {
     int res = 0;
@@ -444,6 +492,10 @@ int giveme_network_dataexchange_connection(struct queued_work *work)
 
         case GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_REQUEST_CHUNK:
             res = giveme_network_dataexchange_handle_package_request_chunk(&packet, conn);
+            break;
+
+        case GIVEME_DATAEXCHANGE_NETWORK_PACKET_TYPE_PACKAGE_SEND_CHUNK:
+            res = giveme_network_dataexchange_handle_package_send_chunk(&packet, conn);
             break;
 
         default:
@@ -578,7 +630,7 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
     size_t amount_written = 0;
     while (amount_left > 0)
     {
-        res = write(client, ptr+amount_written, amount_left);
+        res = write(client, ptr + amount_written, amount_left);
         if (res < 0)
         {
             giveme_log("%s issue sending bytes err=%i\n", __FUNCTION__, errno);
@@ -674,7 +726,7 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount, size_t timeout_s
     size_t amount_read = 0;
     while (amount_left > 0)
     {
-        res = recv(client, ptr+amount_read, amount_left, MSG_WAITALL);
+        res = recv(client, ptr + amount_read, amount_left, MSG_WAITALL);
         if (res <= 0)
         {
             res = -1;
@@ -834,9 +886,8 @@ out:
     return res;
 }
 
-bool giveme_network_ip_connected(struct in_addr *addr)
+struct network_connection *giveme_network_get_connection(struct in_addr *addr)
 {
-    bool connected = false;
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
         pthread_mutex_lock(&network.connections[i].lock);
@@ -844,17 +895,17 @@ bool giveme_network_ip_connected(struct in_addr *addr)
             memcmp(&network.connections[i].data->addr.sin_addr, addr, sizeof(network.connections[i].data->addr.sin_addr)) == 0)
         {
             // The IP is connected
-            connected = true;
+            return &network.connections[i];
         }
         pthread_mutex_unlock(&network.connections[i].lock);
-
-        if (connected)
-        {
-            break;
-        }
     }
 
-    return connected;
+    return NULL;
+}
+
+bool giveme_network_ip_connected(struct in_addr *addr)
+{
+    return giveme_network_get_connection(addr) != NULL;
 }
 
 bool giveme_network_ip_address_exists(struct in_addr *addr)
@@ -1178,6 +1229,46 @@ void giveme_network_relay(struct giveme_tcp_packet *packet)
     // We must add the packet to our relayed packets vector so we know
     // not to send it again, resulting in an infinate loop
     giveme_network_relayed_packet_push(packet);
+}
+void giveme_network_broadcast_to_ips(struct giveme_tcp_packet *packet, const char (*ip_address)[GIVEME_IP_STRING_SIZE], size_t total_ips)
+{
+    struct in_addr addr = {};
+    // Let's try to connect to all those IP's just in case we dont have a connection yet
+
+    for (size_t i = 0; i < total_ips; i++)
+    {
+        if (inet_aton(ip_address[i], &addr) == 0)
+        {
+            giveme_log("inet_aton() failed\n");
+        }
+
+        giveme_network_connect_to_ip(addr);
+        struct network_connection *connection = giveme_network_get_connection(&addr);
+        if (connection)
+        {
+            // Alright we got a valid connection lets connect and broadcast this packet.
+
+            if (pthread_mutex_trylock(&connection->lock) == EBUSY)
+            {
+                continue;
+            }
+
+            if (!connection->data)
+            {
+                pthread_mutex_unlock(&connection->lock);
+                continue;
+            }
+
+            if (giveme_tcp_send_packet(connection, packet) < 0)
+            {
+                // Problem sending packet? Then we should remove this socket from the connections
+                giveme_log("%s problem sending packet to %s\n", __FUNCTION__, inet_ntoa(connection->data->addr.sin_addr));
+                giveme_network_disconnect(connection);
+            }
+
+            pthread_mutex_unlock(&connection->lock);
+        }
+    }
 }
 
 void giveme_network_broadcast(struct giveme_tcp_packet *packet)
@@ -1795,6 +1886,37 @@ void giveme_network_packet_handle_ping(struct giveme_tcp_packet *packet, struct 
     memcpy(connection->data->block_hash, packet->data.ping.last_hash, sizeof(connection->data->block_hash));
 }
 
+/**
+ * @brief This is called when someone wants us to upload a package to them.
+ *
+ * @param packet
+ * @param connectiom
+ */
+int giveme_network_packet_handle_download_package_as_host(struct giveme_tcp_packet *packet, struct network_connection *connection)
+{
+    int res = 0;
+    char *package_filehash = packet->data.download_package_as_host.filehash;
+    struct package *package = giveme_package_get_by_filehash(package_filehash);
+    if (!package)
+    {
+        // Package is non-existant on the blockchain.
+        return -1;
+    }
+
+    if (!package->downloaded.yes)
+    {
+        // We don't have the package?? Then we cannot upload anything, lets ignore this packet.
+        return -1;
+    }
+
+    // Lets craft a response.
+    struct giveme_tcp_packet res_packet;
+    bzero(&res_packet, sizeof(res_packet));
+
+out:
+    return res;
+}
+
 void giveme_network_packet_handle_downloaded_package(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     // Someone has signified they have downlaoded a package and wants
@@ -1864,6 +1986,10 @@ void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct netw
 
     case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE:
         giveme_network_packet_handle_downloaded_package(packet, connection);
+        break;
+
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOAD_PACKAGE_AS_HOST:
+        giveme_network_packet_handle_download_package_as_host(packet, connection);
         break;
     }
 }
@@ -2114,6 +2240,10 @@ struct network_package_download_uploading_peer *giveme_network_download_package_
     return uploading_peer;
 }
 
+bool giveme_network_download_is_complete(struct network_package_download *download)
+{
+    return (download->info.download.chunks.downloaded == download->info.download.chunks.total);
+}
 /**
  * @brief Finds a chunk that needs to be downloaded from a peer.
  *
@@ -2135,7 +2265,7 @@ int giveme_network_download_package_get_required_chunk(struct network_package_do
         }
     }
 
-    bool is_downloaded = (download->info.download.chunks.downloaded == download->info.download.chunks.total);
+    bool is_downloaded = giveme_network_download_is_complete(download);
     if (is_downloaded)
     {
         return GIVEME_NETWORK_PACKAGE_DOWNLOAD_COMPLETED;
@@ -2149,39 +2279,67 @@ void giveme_network_download_package_set_chunk_status(struct network_package_dow
     download->info.download.chunks.chunk_map[chunk] = entry;
 }
 
-int giveme_network_download_package_peer_session_download_chunk(struct network_package_download_uploading_peer *peer, int sock)
+int giveme_network_download_process_package_chunk(int sock, struct network_package_download *download, struct giveme_dataexchange_tcp_packet *packet, CHUNK_MAP_ENTRY *chunk_entry_out)
 {
-    int res = GIVEME_NETWORK_PACKAGE_DOWNLOAD_COMPLETED;
     CHUNK_MAP_ENTRY new_entry_status = 0;
-    struct network_package_download *download = peer->download;
     struct package *package = download->info.package;
-    // What chunks are not downloaded yet? Let's find one
-    int required_chunk = 0;
-
-    pthread_mutex_lock(&download->info.download.mutex);
-    res = giveme_network_download_package_get_required_chunk(download, &required_chunk);
-    if (res == GIVEME_NETWORK_PACKAGE_DOWNLOAD_INCOMPLETE)
+    int res = 0;
+    if (strncmp(packet->package_send_chunk.package.data_hash, package->details.filehash, sizeof(packet->package_send_chunk.package.data_hash)) != 0)
     {
-        giveme_network_download_package_set_chunk_status(download, required_chunk, GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOAD_IN_PROGRESS);
-    }
-    pthread_mutex_unlock(&download->info.download.mutex);
-
-    if (res < 0)
-    {
-        giveme_log("%s an error occured..\n", __FUNCTION__);
+        giveme_log("%s peer responded with a chunk from a package we are not asking for\n", __FUNCTION__);
         res = -1;
         goto out;
     }
-    else if (res == GIVEME_NETWORK_PACKAGE_DOWNLOAD_COMPLETED)
+
+    off_t chunk_index = packet->package_send_chunk.index;
+    // We are in agreement of the chunk to be sent, lets download the data directly into
+    // the package in question.
+    off_t offset = giveme_package_file_offset_for_chunk(package, chunk_index);
+    size_t total_bytes = packet->package_send_chunk.chunk_size;
+    char *data = giveme_network_download_file_data_ptr(download) + offset;
+
+    // Will we be in bounds?
+    if (package->details.size < offset + total_bytes)
     {
-        giveme_log("%s the download has completed, we have no more chunks to ask for all threads succeeded in downloading the package from severla peers\n", __FUNCTION__);
-        goto out_completed;
-    }
-    else if (res == GIVEME_NETWORK_PACKAGE_DOWNLOAD_NO_CHUNKS_AVAILABLE)
-    {
-        giveme_log("%s there are no chunks available for download as all threads are downloading the last chunks we know of\n", __FUNCTION__);
+        // We aren't in bounds, this could be an attacker.
+        giveme_log("%s peer attempted an out of bounds attack which was caught\n", __FUNCTION__);
+        res = -1;
         goto out;
     }
+
+    // Okay it is safe for us to read the data into the buffer lets do it.
+    res = giveme_tcp_recv_bytes(sock, data, total_bytes, GIVEME_NETWORK_TCP_DATA_EXCHANGE_IO_TIMEOUT_SECONDS);
+    if (res < 0)
+    {
+        giveme_log("%s failed to read the chunk bytes from the peer\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+out:
+    new_entry_status = GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOADED;
+    if (res < 0)
+    {
+        // We failed?? Then the new status must be a not downloaded status
+        // so another thread can pick up the slack.
+        new_entry_status = GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_NOT_DOWNLOADED;
+    }
+    pthread_mutex_lock(&download->info.download.mutex);
+    giveme_network_download_package_set_chunk_status(download, chunk_index, new_entry_status);
+    if (new_entry_status == GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOADED)
+    {
+        download->info.download.chunks.downloaded++;
+    }
+    pthread_mutex_unlock(&download->info.download.mutex);
+
+    *chunk_entry_out = new_entry_status;
+    return res;
+}
+
+int giveme_network_download_request_chunk(struct network_package_download* download, int required_chunk, int sock, struct network_package_download_uploading_peer *peer)
+{
+    int res = 0;
+    struct package* package = download->info.package;
+    CHUNK_MAP_ENTRY new_entry_status = 0;
 
     // We have a required chunk that needs downloading, lets ask for it.
     struct giveme_dataexchange_tcp_packet packet = {};
@@ -2224,61 +2382,59 @@ int giveme_network_download_package_peer_session_download_chunk(struct network_p
         res = -1;
         goto out;
     }
-
-    if (strncmp(packet.package_send_chunk.package.data_hash, package->details.filehash, sizeof(packet.package_send_chunk.package.data_hash)) != 0)
-    {
-        giveme_log("%s peer responded with a chunk from a package we are not asking for\n", __FUNCTION__);
-        res = -1;
-        goto out;
-    }
-
-    // We are in agreement of the chunk to be sent, lets download the data directly into
-    // the package in question.
-    off_t offset = giveme_package_file_offset_for_chunk(package, required_chunk);
-    size_t total_bytes = packet.package_send_chunk.chunk_size;
-    char *data = giveme_network_download_file_data_ptr(download) + offset;
-
-    // Will we be in bounds?
-    if (package->details.size < offset + total_bytes)
-    {
-        // We aren't in bounds, this could be an attacker.
-        giveme_log("%s peer attempted an out of bounds attack which was caught\n", __FUNCTION__);
-        res = -1;
-        goto out;
-    }
-
-    // Okay it is safe for us to read the data into the buffer lets do it.
-    res = giveme_tcp_recv_bytes(sock, data, total_bytes, GIVEME_NETWORK_TCP_DATA_EXCHANGE_IO_TIMEOUT_SECONDS);
-    if (res < 0)
-    {
-        giveme_log("%s failed to read the chunk bytes from the peer\n", __FUNCTION__);
-        res = -1;
-        goto out;
-    }
 out:
-    new_entry_status = GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOADED;
-    if (res < 0)
+    res = giveme_network_download_process_package_chunk(sock, download, &packet, &new_entry_status);
+    if (res >= 0)
     {
-        // We failed?? Then the new status must be a not downloaded status
-        // so another thread can pick up the slack.
-        new_entry_status = GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_NOT_DOWNLOADED;
+        // Has the peer successfully uploaded a chunk to us. Then let us mark him one chunk up
+        // Best uploaders get higher rewards.
+        if (new_entry_status == GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOADED)
+        {
+            if (peer)
+            {
+                pthread_mutex_lock(&download->info.connections.mutex);
+                peer->chunks_uploaded++;
+                pthread_mutex_unlock(&download->info.connections.mutex);
+            }
+        }
     }
+    return res;
+}
+int giveme_network_download_package_peer_session_download_chunk(struct network_package_download_uploading_peer *peer, int sock)
+{
+    int res = GIVEME_NETWORK_PACKAGE_DOWNLOAD_COMPLETED;
+    struct network_package_download *download = peer->download;
+    struct package *package = download->info.package;
+    // What chunks are not downloaded yet? Let's find one
+    int required_chunk = 0;
+
     pthread_mutex_lock(&download->info.download.mutex);
-    giveme_network_download_package_set_chunk_status(download, required_chunk, new_entry_status);
-    if (new_entry_status == GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOADED)
+    res = giveme_network_download_package_get_required_chunk(download, &required_chunk);
+    if (res == GIVEME_NETWORK_PACKAGE_DOWNLOAD_INCOMPLETE)
     {
-        download->info.download.chunks.downloaded++;
+        giveme_network_download_package_set_chunk_status(download, required_chunk, GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOAD_IN_PROGRESS);
     }
     pthread_mutex_unlock(&download->info.download.mutex);
 
-    if (new_entry_status == GIVEME_NETWORK_PACKAGE_DOWNLOAD_CHUNK_MAP_CHUNK_DOWNLOADED)
+    if (res < 0)
     {
-        pthread_mutex_lock(&download->info.connections.mutex);
-        peer->chunks_uploaded++;
-        pthread_mutex_unlock(&download->info.connections.mutex);
+        giveme_log("%s an error occured..\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+    else if (res == GIVEME_NETWORK_PACKAGE_DOWNLOAD_COMPLETED)
+    {
+        giveme_log("%s the download has completed, we have no more chunks to ask for all threads succeeded in downloading the package from severla peers\n", __FUNCTION__);
+        goto out;
+    }
+    else if (res == GIVEME_NETWORK_PACKAGE_DOWNLOAD_NO_CHUNKS_AVAILABLE)
+    {
+        giveme_log("%s there are no chunks available for download as all threads are downloading the last chunks we know of\n", __FUNCTION__);
+        goto out;
     }
 
-out_completed:
+    res = giveme_network_download_request_chunk(download, required_chunk, sock, peer);
+out:
     return res;
 }
 int giveme_network_download_package_peer_session_download_chunks(struct network_package_download_uploading_peer *peer, int sock)
@@ -2332,6 +2488,24 @@ out:
     return res;
 }
 
+struct network_package_download *giveme_network_downloads_find(const char *filehash)
+{
+    vector_set_peek_pointer(network.downloads, 0);
+    struct network_package_download *current_download = vector_peek_ptr(network.downloads);
+    while (current_download)
+    {
+        if (strncmp(current_download->info.package->details.filehash, filehash,
+                    sizeof(current_download->info.package->details.filehash)) == 0)
+        {
+            // We have the download we are looking for
+            return current_download;
+        }
+        current_download = vector_peek_ptr(network.downloads);
+    }
+
+    return NULL;
+}
+
 void giveme_network_downloads_push(struct network_package_download *download)
 {
     vector_push(network.downloads, &download);
@@ -2381,6 +2555,88 @@ out:
     return res;
 }
 
+/**
+ * @brief This is a failsafe command in the event we cannot download a package due to the other node
+ * being behind a highly restricted router that does not support UPNP. With this command we will become the host
+ * and the user will upload to us instead of us downloading directly from them as the host.
+ *
+ * @param package_filehash
+ * @param filename_out
+ * @param filename_size
+ * @return int
+ */
+int giveme_network_download_package_as_host(const char *package_filehash, char *filename_out, size_t filename_size)
+{
+    int res = 0;
+    struct package *package = giveme_package_get_by_filehash(package_filehash);
+    if (!package)
+    {
+        // Package is non-existant on the blockchain.
+        return -1;
+    }
+
+    if (package->downloaded.yes)
+    {
+        // We already have downlaoded this package, it is in cache.
+        strncpy(filename_out, package->downloaded.filepath, filename_size);
+        return 0;
+    }
+
+    struct network_package_download* download = giveme_network_new_package_download(package);
+    if (!download)
+    {
+        giveme_log("%s issue creating a new download, nothing we can do right now\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    pthread_mutex_lock(&network.downloads_lock);
+    giveme_network_downloads_push(download);
+    pthread_mutex_unlock(&network.downloads_lock);
+
+
+    struct giveme_tcp_packet packet;
+    bzero(&packet, sizeof(packet));
+    packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOAD_PACKAGE_AS_HOST;
+    strncpy(packet.data.download_package_as_host.filehash, package_filehash, sizeof(packet.data.download_package_as_host.filehash));
+    // Alright lets broadcast this package and wait for people to come
+    giveme_network_broadcast(&packet);
+
+out:
+    return res;
+}
+
+void giveme_network_download_remove_and_free(struct network_package_download *download)
+{
+    pthread_mutex_lock(&network.downloads_lock);
+    giveme_network_downloads_remove(download);
+    pthread_mutex_unlock(&network.downloads_lock);
+    giveme_network_free_package_download(download);
+}
+
+int giveme_finalize_download(struct network_package_download *download)
+{
+    int res = 0;
+    struct package* package = download->info.package;
+    // Chunks match downloaded? Let's ensure the integrity of the data sent to us.
+    char tmp_hash[SHA256_STRING_LENGTH];
+    sha256_file(download->info.download.tmp_filename, tmp_hash);
+    if (strncmp(tmp_hash, package->details.filehash, sizeof(tmp_hash)) != 0)
+    {
+        giveme_log("%s the hash of the file we downloaded does not match the package hash, a peer lied to us when sending us a chunk\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
+
+    char package_path[PATH_MAX];
+    strncpy(package_path, giveme_package_path(package->details.filehash), sizeof(package_path));
+    rename(download->info.download.tmp_filename, package_path);
+    strncpy(package->downloaded.filepath, package_path, sizeof(package->downloaded.filepath));
+    package->downloaded.yes = true;
+
+out:
+    return res;
+}
 int giveme_network_download_package(const char *package_filehash, char *filename_out, size_t filename_size)
 {
     struct network_package_download *download = NULL;
@@ -2448,32 +2704,23 @@ int giveme_network_download_package(const char *package_filehash, char *filename
     giveme_log("%s all threads completed, download done.\n", __FUNCTION__);
 
     // Let's now see if we was successful in downloading the file.
-    if (download->info.download.chunks.total != download->info.download.chunks.downloaded)
+    if (!giveme_network_download_is_complete(download))
     {
         giveme_log("%s not all chunks were sent to us.. data error download unexpectedly failed\n", __FUNCTION__);
         res = -1;
         goto out;
     }
 
-    // Chunks match downloaded? Let's ensure the integrity of the data sent to us.
-    char tmp_hash[SHA256_STRING_LENGTH];
-    sha256_file(download->info.download.tmp_filename, tmp_hash);
-    if (strncmp(tmp_hash, package->details.filehash, sizeof(tmp_hash)) != 0)
-    {
-        giveme_log("%s the hash of the file we downloaded does not match the package hash, a peer lied to us when sending us a chunk\n", __FUNCTION__);
-        res = -1;
-        goto out;
-    }
 
     giveme_log("%s the file was downloaded successfully into temporary file %s\n", __FUNCTION__, download->info.download.tmp_filename);
     giveme_log("%s moving to package directory\n", __FUNCTION__);
 
-    char package_path[PATH_MAX];
-    strncpy(package_path, giveme_package_path(package->details.filehash), sizeof(package_path));
-    rename(download->info.download.tmp_filename, package_path);
-    strncpy(filename_out, package_path, filename_size);
-    strncpy(package->downloaded.filepath, package_path, sizeof(package->downloaded.filepath));
-    package->downloaded.yes = true;
+    res = giveme_finalize_download(download);
+    if (res < 0)
+    {
+        giveme_log("%s issue finalizing the download\n", __FUNCTION__);
+        goto out;
+    }
     int r = giveme_network_package_downloaded(package->details.filehash);
     if (r < 0)
     {
@@ -2483,10 +2730,7 @@ int giveme_network_download_package(const char *package_filehash, char *filename
 out:
     if (download)
     {
-        pthread_mutex_lock(&network.downloads_lock);
-        giveme_network_downloads_remove(download);
-        pthread_mutex_unlock(&network.downloads_lock);
-        giveme_network_free_package_download(download);
+        giveme_network_download_remove_and_free(download);
     }
     return res;
 }

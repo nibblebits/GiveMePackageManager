@@ -154,6 +154,7 @@ enum
     GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN,
     GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE,
     GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE,
+    GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOAD_PACKAGE_AS_HOST,
 };
 
 struct block block;
@@ -246,6 +247,18 @@ struct giveme_tcp_packet
                 // The port the receiver should connect to if they want to receive the chain
                 int data_port;
             } update_chain_response;
+
+            /**
+             * @brief This packet is sent when we wish the owner of a package
+             * to connect to us as and upload a package.
+             */
+            struct giveme_tcp_packet_download_as_host_request
+            {
+                // The filehash of the package we want to download
+                char filehash[SHA256_STRING_LENGTH];
+            } download_package_as_host;
+
+
             // In case we want to add special packets in the future
             // we should reserve some data in the tcp packet
             // which will also affect the block size
