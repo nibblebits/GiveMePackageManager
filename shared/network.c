@@ -590,6 +590,8 @@ int giveme_tcp_network_accept(int sock, struct sockaddr_in *client_out)
         return -1;
     }
 
+    fcntl(connfd, F_SETFL, O_NONBLOCK);
+
     giveme_log("Received connection from %s:%d\n", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
 
     int interval = 1;
@@ -621,7 +623,7 @@ int giveme_tcp_network_accept(int sock, struct sockaddr_in *client_out)
     return connfd;
 }
 
-int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
+int giveme_tcp_send_bytes_no_timeout(int client, void *ptr, size_t amount)
 {
     int res = 0;
     size_t amount_left = amount;
@@ -644,6 +646,31 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
         amount_left -= res;
         count++;
     }
+    return res;
+}
+int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
+{
+    int res = 0;
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(client, &fds);
+    struct timeval tv = {3, 0};
+    int st = select(client + 1, NULL, &fds, NULL, &tv);
+    if (st < 0)
+    {
+        giveme_log("%s issue with select\n", __FUNCTION__);
+        res = -1;
+    }
+    else if (FD_ISSET(client, &fds))
+    {
+        res = giveme_tcp_send_bytes_no_timeout(client, ptr, amount);
+    }
+    else
+    {
+        giveme_log("%s client unresponsive for three seconds\n", __FUNCTION__);
+        res = -1;
+    }
+
     return res;
 }
 
@@ -710,24 +737,10 @@ int giveme_tcp_recv_bytes_no_block(int client, void *ptr, size_t amount)
     return res;
 }
 
-int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount, size_t timeout_seconds)
+int giveme_tcp_recv_bytes_no_timeout(int client, void *ptr, size_t amount)
 {
     int res = 0;
     size_t amount_left = amount;
-
-    struct timeval timeout;
-    timeout.tv_sec = timeout_seconds;
-    timeout.tv_usec = 0;
-
-    if (setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout,
-                   sizeof timeout) < 0)
-    {
-        giveme_log("Failed to set socket timeout\n");
-        return -1;
-    }
-
-    giveme_tcp_client_enable_blocking(client);
-
     size_t amount_read = 0;
     while (amount_left > 0)
     {
@@ -740,6 +753,31 @@ int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount, size_t timeout_s
         amount_read += res;
         amount_left -= res;
     }
+    return res;
+}
+int giveme_tcp_recv_bytes(int client, void *ptr, size_t amount, size_t timeout_seconds)
+{
+    int res = 0;
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(client, &fds);
+    struct timeval tv = {timeout_seconds, 0};
+    int st = select(client + 1, NULL, &fds, NULL, &tv);
+    if (st < 0)
+    {
+        giveme_log("%s issue with select\n", __FUNCTION__);
+        res = -1;
+    }
+    else if (FD_ISSET(client, &fds))
+    {
+        res = giveme_tcp_recv_bytes_no_timeout(client, ptr, amount);
+    }
+    else
+    {
+        giveme_log("%s client unresponsive for three seconds\n", __FUNCTION__);
+        res = -1;
+    }
+
     return res;
 }
 
@@ -798,27 +836,10 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
     // We must send the initial header of the packet. Data following is the payload
     // the amount of bytes to be sent depends on the packet type
 
-    int res = 0;
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(client, &fds);
-    struct timeval tv = {3, 0};
-    int st = select(client + 1, NULL, &fds, NULL, &tv);
-    if (st < 0)
+    int res = giveme_tcp_send_bytes(client, packet, giveme_tcp_header_size()) > 0 ? 0 : -1;
+    if (res < 0)
     {
-        giveme_log("%s issue with select\n", __FUNCTION__);
-    }
-    else if (FD_ISSET(client, &fds))
-    {
-        res = giveme_tcp_send_bytes(client, packet, giveme_tcp_header_size()) > 0 ? 0 : -1;
-        if (res < 0)
-        {
-            return res;
-        }
-    }
-    else
-    {
-        giveme_log("%s client unresponsive for three seconds\n", __FUNCTION__);
+        return res;
     }
 
     // Send the payload of the packet
@@ -910,6 +931,7 @@ out:
 
 struct network_connection *giveme_network_get_connection(struct in_addr *addr)
 {
+    struct network_connection *connection = NULL;
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
         pthread_mutex_lock(&network.connections[i].lock);
@@ -917,13 +939,14 @@ struct network_connection *giveme_network_get_connection(struct in_addr *addr)
             memcmp(&network.connections[i].data->addr.sin_addr, addr, sizeof(network.connections[i].data->addr.sin_addr)) == 0)
         {
             // The IP is connected
+            connection = &network.connections[i];
             pthread_mutex_unlock(&network.connections[i].lock);
-            return &network.connections[i];
+            break;
         }
         pthread_mutex_unlock(&network.connections[i].lock);
     }
 
-    return NULL;
+    return connection;
 }
 
 bool giveme_network_ip_connected(struct in_addr *addr)
@@ -1096,6 +1119,7 @@ int giveme_tcp_network_connect(struct in_addr addr, int port, int flags)
         return -1;
     }
 
+    fcntl(sockfd, F_SETFL, O_NONBLOCK);
     // connect the client socket to server socket
     if (connect(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
     {
