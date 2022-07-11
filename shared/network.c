@@ -650,26 +650,26 @@ int giveme_tcp_send_bytes_no_timeout(int client, void *ptr, size_t amount)
 }
 int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
 {
-    int res = 0;
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(client, &fds);
-    struct timeval tv = {3, 0};
-    int st = select(client + 1, NULL, &fds, NULL, &tv);
-    if (st < 0)
-    {
-        giveme_log("%s issue with select\n", __FUNCTION__);
-        res = -1;
-    }
-    else if (FD_ISSET(client, &fds))
-    {
-        res = giveme_tcp_send_bytes_no_timeout(client, ptr, amount);
-    }
-    else
-    {
-        giveme_log("%s client unresponsive for three seconds\n", __FUNCTION__);
-        res = -1;
-    }
+    // int res = 0;
+    // fd_set fds;
+    // FD_ZERO(&fds);
+    // FD_SET(client, &fds);
+    // struct timeval tv = {3, 0};
+    // int st = select(client + 1, NULL, &fds, NULL, &tv);
+    // if (st < 0)
+    // {
+    //     giveme_log("%s issue with select\n", __FUNCTION__);
+    //     res = -1;
+    // }
+    // else if (FD_ISSET(client, &fds))
+    // {
+     int  res = giveme_tcp_send_bytes_no_timeout(client, ptr, amount);
+    // }
+    // else
+    // {
+    //     giveme_log("%s client unresponsive for three seconds\n", __FUNCTION__);
+    //     res = -1;
+    // }
 
     return res;
 }
@@ -1119,7 +1119,6 @@ int giveme_tcp_network_connect(struct in_addr addr, int port, int flags)
         return -1;
     }
 
-    fcntl(sockfd, F_SETFL, O_NONBLOCK);
     // connect the client socket to server socket
     if (connect(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
     {
@@ -1128,13 +1127,7 @@ int giveme_tcp_network_connect(struct in_addr addr, int port, int flags)
     }
 
     // Set the IO timeout now that we have connected.
-    timeout.tv_sec = GIVEME_NETWORK_TCP_IO_TIMEOUT_SECONDS;
-    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
-                   sizeof timeout) < 0)
-    {
-        giveme_log("Failed to set socket timeout\n");
-        return -1;
-    }
+    fcntl(sockfd, F_SETFL, O_NONBLOCK);
 
     if (flags & GIVEME_CONNECT_FLAG_ADD_TO_CONNECTIONS)
     {
