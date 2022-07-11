@@ -47,8 +47,7 @@ static size_t packet_payload_sizes[] = {
     sizeof(struct giveme_tcp_packet_update_chain),
     sizeof(struct giveme_tcp_packet_update_chain_response),
     sizeof(struct giveme_tcp_packet_package_downloaded),
-    sizeof(struct giveme_tcp_packet_download_as_host_request)
-};
+    sizeof(struct giveme_tcp_packet_download_as_host_request)};
 
 struct network network;
 
@@ -465,7 +464,6 @@ int giveme_network_dataexchange_handle_package_send_chunk(struct giveme_dataexch
         giveme_network_download_remove_and_free(download);
     }
 
-    
 out:
     return 0;
 }
@@ -800,10 +798,27 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
     // We must send the initial header of the packet. Data following is the payload
     // the amount of bytes to be sent depends on the packet type
 
-    int res = giveme_tcp_send_bytes(client, packet, giveme_tcp_header_size()) > 0 ? 0 : -1;
-    if (res < 0)
+    int res = 0;
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(client, &fds);
+    struct timeval tv = {3, 0};
+    int st = select(client + 1, NULL, &fds, NULL, &tv);
+    if (st < 0)
     {
-        return res;
+        giveme_log("%s issue with select\n", __FUNCTION__);
+    }
+    else if (FD_ISSET(client, &fds))
+    {
+        res = giveme_tcp_send_bytes(client, packet, giveme_tcp_header_size()) > 0 ? 0 : -1;
+        if (res < 0)
+        {
+            return res;
+        }
+    }
+    else
+    {
+        giveme_log("%s client unresponsive for three seconds\n", __FUNCTION__);
     }
 
     // Send the payload of the packet
@@ -902,6 +917,7 @@ struct network_connection *giveme_network_get_connection(struct in_addr *addr)
             memcmp(&network.connections[i].data->addr.sin_addr, addr, sizeof(network.connections[i].data->addr.sin_addr)) == 0)
         {
             // The IP is connected
+            pthread_mutex_unlock(&network.connections[i].lock);
             return &network.connections[i];
         }
         pthread_mutex_unlock(&network.connections[i].lock);
@@ -2342,10 +2358,10 @@ out:
     return res;
 }
 
-int giveme_network_download_request_chunk(struct network_package_download* download, int required_chunk, int sock, struct network_package_download_uploading_peer *peer)
+int giveme_network_download_request_chunk(struct network_package_download *download, int required_chunk, int sock, struct network_package_download_uploading_peer *peer)
 {
     int res = 0;
-    struct package* package = download->info.package;
+    struct package *package = download->info.package;
     CHUNK_MAP_ENTRY new_entry_status = 0;
 
     // We have a required chunk that needs downloading, lets ask for it.
@@ -2589,7 +2605,7 @@ int giveme_network_download_package_as_host(const char *package_filehash, char *
         return 0;
     }
 
-    struct network_package_download* download = giveme_network_new_package_download(package);
+    struct network_package_download *download = giveme_network_new_package_download(package);
     if (!download)
     {
         giveme_log("%s issue creating a new download, nothing we can do right now\n", __FUNCTION__);
@@ -2600,7 +2616,6 @@ int giveme_network_download_package_as_host(const char *package_filehash, char *
     pthread_mutex_lock(&network.downloads_lock);
     giveme_network_downloads_push(download);
     pthread_mutex_unlock(&network.downloads_lock);
-
 
     struct giveme_tcp_packet packet;
     bzero(&packet, sizeof(packet));
@@ -2624,7 +2639,7 @@ void giveme_network_download_remove_and_free(struct network_package_download *do
 int giveme_finalize_download(struct network_package_download *download)
 {
     int res = 0;
-    struct package* package = download->info.package;
+    struct package *package = download->info.package;
     // Chunks match downloaded? Let's ensure the integrity of the data sent to us.
     char tmp_hash[SHA256_STRING_LENGTH];
     sha256_file(download->info.download.tmp_filename, tmp_hash);
@@ -2717,7 +2732,6 @@ int giveme_network_download_package(const char *package_filehash, char *filename
         res = -1;
         goto out;
     }
-
 
     giveme_log("%s the file was downloaded successfully into temporary file %s\n", __FUNCTION__, download->info.download.tmp_filename);
     giveme_log("%s moving to package directory\n", __FUNCTION__);
