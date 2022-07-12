@@ -64,6 +64,7 @@ int giveme_network_download_process_package_chunk(int sock, struct network_packa
 bool giveme_network_download_is_complete(struct network_package_download *download);
 int giveme_finalize_download(struct network_package_download *download);
 void giveme_network_download_remove_and_free(struct network_package_download *download);
+void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection);
 
 void giveme_network_action_schedule(NETWORK_ACTION_FUNCTION func, void *data, size_t size)
 {
@@ -663,7 +664,7 @@ int giveme_tcp_send_bytes(int client, void *ptr, size_t amount)
     // }
     // else if (FD_ISSET(client, &fds))
     // {
-     int  res = giveme_tcp_send_bytes_no_timeout(client, ptr, amount);
+    int res = giveme_tcp_send_bytes_no_timeout(client, ptr, amount);
     // }
     // else
     // {
@@ -1021,13 +1022,13 @@ struct network_connection *giveme_network_connection_find_slot(pthread_mutex_t *
     return NULL;
 }
 
-int giveme_network_connection_add(struct network_connection_data *data)
+struct network_connection *giveme_network_connection_add(struct network_connection_data *data)
 {
     pthread_mutex_t *lock_to_unlock;
     struct network_connection *conn_slot = giveme_network_connection_find_slot(&lock_to_unlock);
     if (!conn_slot)
     {
-        return -1;
+        return NULL;
     }
 
     conn_slot->data = data;
@@ -1035,6 +1036,52 @@ int giveme_network_connection_add(struct network_connection_data *data)
 
     network.total_connected++;
 
+    return conn_slot;
+}
+
+
+void giveme_network_packets_process(struct network_connection *connection)
+{
+
+    if (pthread_mutex_lock(&connection->lock) == EBUSY)
+    {
+        giveme_log("%s failed to lock connecton\n", __FUNCTION__);
+        return;
+    }
+
+    int sock = giveme_network_connection_socket(connection);
+
+    struct giveme_tcp_packet packet = {};
+    if (giveme_tcp_recv_packet(connection, &packet) == 0)
+    {
+        // We have a packet then process it.
+        giveme_network_packet_process(&packet, connection);
+    }
+    pthread_mutex_unlock(&connection->lock);
+}
+
+/**
+ * @brief Each connection has its own thread for preformance reasons.
+ *
+ * @param work
+ * @return int
+ */
+int giveme_network_connection_thread(struct queued_work *work)
+{
+    struct network_connection *connection = work->private;
+    giveme_network_packets_process(connection);
+    return 0;
+}
+int giveme_network_connection_start(struct network_connection_data *data)
+{
+    struct network_connection *connection = giveme_network_connection_add(data);
+    if (connection == NULL)
+    {
+        giveme_log("%s issue creating connection\n", __FUNCTION__);
+        return -1;
+    }
+
+    giveme_queue_work(giveme_network_connection_thread, connection);
     return 0;
 }
 
@@ -1135,7 +1182,7 @@ int giveme_tcp_network_connect(struct in_addr addr, int port, int flags)
         data->sock = sockfd;
         data->addr = servaddr;
         data->last_contact = time(NULL);
-        if (giveme_network_connection_add(data) < 0)
+        if (giveme_network_connection_start(data) < 0)
         {
             giveme_network_connection_data_free(data);
         }
@@ -2031,33 +2078,6 @@ void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct netw
     case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOAD_PACKAGE_AS_HOST:
         giveme_network_packet_handle_download_package_as_host(packet, connection);
         break;
-    }
-}
-void giveme_network_packets_process()
-{
-    for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
-    {
-        if (pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
-        {
-            continue;
-        }
-        struct network_connection *connection = &network.connections[i];
-
-        if (!giveme_network_connection_connected(connection))
-        {
-            pthread_mutex_unlock(&connection->lock);
-            continue;
-        }
-
-        int sock = giveme_network_connection_socket(connection);
-
-        struct giveme_tcp_packet packet = {};
-        if (giveme_tcp_recv_packet(connection, &packet) == 0)
-        {
-            // We have a packet then process it.
-            giveme_network_packet_process(&packet, connection);
-        }
-        pthread_mutex_unlock(&network.connections[i].lock);
     }
 }
 
@@ -3011,7 +3031,7 @@ void giveme_network_process_action(void *data, size_t d_size)
         giveme_network_known_hashes_unlock();
         network.blockchain.last_known_hashes_update = time(NULL);
     }
-    giveme_network_packets_process();
+
     giveme_network_make_block_if_possible();
     giveme_unlock_chain();
     usleep(10);
@@ -3038,7 +3058,7 @@ void giveme_network_accepted_action(void *data_in, size_t d_size)
     }
 
     data->last_contact = time(NULL);
-    if (giveme_network_connection_add(data) < 0)
+    if (giveme_network_connection_start(data) < 0)
     {
         giveme_network_connection_data_free(data);
     }
