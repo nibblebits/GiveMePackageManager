@@ -122,6 +122,7 @@ void giveme_network_action_schedule_for_connection(struct network_connection *co
     action.func = func;
 
     vector_push_at(action_queue->action_vector, 0, &action);
+    giveme_log("%s added action for scheduleing to connection. COUNT=%i\n", __FUNCTION__, vector_count(action_queue->action_vector));
     pthread_mutex_unlock(&connection->lock);
 }
 
@@ -1177,13 +1178,15 @@ int giveme_network_ping(struct network_connection *connection)
  */
 int giveme_network_connection_thread(struct queued_work *work)
 {
+    int res = 0;
     struct network_connection *connection = work->private;
     while (1)
     {
         if (pthread_mutex_lock(&connection->lock) < 0)
         {
             giveme_log("%s failed to lock connecton\n", __FUNCTION__);
-            return -1;
+            res = -1;
+            break;
         }
         if (giveme_network_ping(connection) < 0)
         {
@@ -1197,7 +1200,7 @@ int giveme_network_connection_thread(struct queued_work *work)
 
         pthread_mutex_unlock(&connection->lock);
     }
-    return 0;
+    return res;
 }
 int giveme_network_connection_start(struct network_connection_data *data)
 {
