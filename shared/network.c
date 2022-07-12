@@ -65,8 +65,10 @@ bool giveme_network_download_is_complete(struct network_package_download *downlo
 int giveme_finalize_download(struct network_package_download *download);
 void giveme_network_download_remove_and_free(struct network_package_download *download);
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection);
+void giveme_network_disconnect(struct network_connection *connection);
+int giveme_network_connection_socket(struct network_connection *connection);
 
-void giveme_network_action_schedule(NETWORK_ACTION_FUNCTION func, void *data, size_t size)
+void giveme_network_action_schedule_for_queue(struct action_queue *action_queue, NETWORK_ACTION_FUNCTION func, void *data, size_t size)
 {
     struct network_action action;
     bzero(&action, sizeof(action));
@@ -78,9 +80,54 @@ void giveme_network_action_schedule(NETWORK_ACTION_FUNCTION func, void *data, si
     }
     action.func = func;
 
-    pthread_mutex_lock(&network.action_queue.lock);
-    vector_push_at(network.action_queue.action_vector, 0, &action);
-    pthread_mutex_unlock(&network.action_queue.lock);
+    pthread_mutex_lock(&action_queue->lock);
+    vector_push_at(action_queue->action_vector, 0, &action);
+    pthread_mutex_unlock(&action_queue->lock);
+}
+
+/**
+ * @brief If you use this function you may not schedule to the action queue directly for connections
+ * You must always use this function because the underlying locking mechnism for the action queue is not used
+ * the connection lock is used instead.
+ * 
+ * @param connection 
+ * @param func 
+ * @param data 
+ * @param size 
+ */
+void giveme_network_action_schedule_for_connection(struct network_connection *connection, NETWORK_ACTION_FUNCTION func, void *data, size_t size)
+{
+    if (pthread_mutex_lock(&connection->lock) < 0)
+    {
+        giveme_log("%s failed to lock the lock\n", __FUNCTION__);
+    }
+
+    if (!connection->data)
+    {
+        pthread_mutex_unlock(&connection->lock);
+        return;
+    }
+
+    // No need to lock the action queue lock because we dont want nested locks
+    // we have already locked the connection one.
+    struct action_queue* action_queue = &connection->data->action_queue;
+    struct network_action action;
+    bzero(&action, sizeof(action));
+
+    if (data)
+    {
+        action.data = data;
+        action.size = size;
+    }
+    action.func = func;
+
+    vector_push_at(action_queue->action_vector, 0, &action);
+    pthread_mutex_unlock(&connection->lock);
+}
+
+void giveme_network_action_schedule(NETWORK_ACTION_FUNCTION func, void *data, size_t size)
+{
+    giveme_network_action_schedule_for_queue(&network.action_queue, func, data, size);
 }
 
 void giveme_network_action_execute(struct network_action *action)
@@ -93,29 +140,56 @@ void giveme_network_action_execute(struct network_action *action)
  * Push your network commands to this vector.
  *
  */
+int giveme_network_action_execute_first(struct action_queue *action_queue)
+{
+
+    // We use a stack action because we dont want to hold a lock for an entire
+    // execution of the action where memory could easily be spilled and shifted.
+    struct network_action saction;
+    struct network_action *action = NULL;
+    pthread_mutex_lock(&action_queue->lock);
+    action = vector_back_or_null(action_queue->action_vector);
+    if (action)
+    {
+        memcpy(&saction, action, sizeof(saction));
+        vector_pop(action_queue->action_vector);
+    }
+    pthread_mutex_unlock(&action_queue->lock);
+    if (action)
+    {
+        giveme_network_action_execute(&saction);
+    }
+    return 0;
+}
+
+int giveme_network_action_queue_initialize(struct action_queue *action_queue)
+{
+    int res = 0;
+    if (pthread_mutex_init(&action_queue->lock, NULL) != 0)
+    {
+        giveme_log("Failed to initialize network action queue mutex\n");
+        res = -1;
+        goto out;
+    }
+
+    action_queue->action_vector = vector_create(sizeof(struct network_action));
+out:
+    return res;
+}
+
+void giveme_network_action_queue_destruct(struct action_queue *action_queue)
+{
+    pthread_mutex_destroy(&action_queue->lock);
+    vector_free(action_queue->action_vector);
+}
+
 int giveme_network_action_thread(struct queued_work *work)
 {
     while (1)
     {
-        // We use a stack action because we dont want to hold a lock for an entire
-        // execution of the action where memory could easily be spilled and shifted.
-        struct network_action saction;
-        struct network_action *action = NULL;
-        pthread_mutex_lock(&network.action_queue.lock);
-        action = vector_back_or_null(network.action_queue.action_vector);
-        if (action)
-        {
-            memcpy(&saction, action, sizeof(saction));
-            vector_pop(network.action_queue.action_vector);
-        }
-        pthread_mutex_unlock(&network.action_queue.lock);
-        if (action)
-        {
-            giveme_network_action_execute(&saction);
-        }
+        giveme_network_action_execute_first(&network.action_queue);
         usleep(10);
     }
-
     return 0;
 }
 
@@ -1039,16 +1113,8 @@ struct network_connection *giveme_network_connection_add(struct network_connecti
     return conn_slot;
 }
 
-
 void giveme_network_packets_process(struct network_connection *connection)
 {
-
-    if (pthread_mutex_lock(&connection->lock) == EBUSY)
-    {
-        giveme_log("%s failed to lock connecton\n", __FUNCTION__);
-        return;
-    }
-
     int sock = giveme_network_connection_socket(connection);
 
     struct giveme_tcp_packet packet = {};
@@ -1057,7 +1123,31 @@ void giveme_network_packets_process(struct network_connection *connection)
         // We have a packet then process it.
         giveme_network_packet_process(&packet, connection);
     }
-    pthread_mutex_unlock(&connection->lock);
+}
+
+int giveme_network_ping(struct network_connection *connection)
+{
+    struct giveme_tcp_packet packet = {};
+    packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PING;
+
+    struct block *last_block = giveme_blockchain_back();
+    assert(last_block);
+    memcpy(packet.data.ping.last_hash, giveme_blockchain_block_hash(last_block), sizeof(packet.data.ping.last_hash));
+
+    // We will only ping once a second.
+    if (!connection->data || (time(NULL) - connection->data->last_contact) < 1)
+    {
+        return 0;
+    }
+
+    if (giveme_tcp_send_packet(connection, &packet) < 0)
+    {
+        // Problem sending packet? Then we should remove this socket from the connections
+        giveme_log("%s problem sending packet to %s\n", __FUNCTION__, inet_ntoa(connection->data->addr.sin_addr));
+        return -1;
+    }
+
+    return 0;
 }
 
 /**
@@ -1069,7 +1159,24 @@ void giveme_network_packets_process(struct network_connection *connection)
 int giveme_network_connection_thread(struct queued_work *work)
 {
     struct network_connection *connection = work->private;
-    giveme_network_packets_process(connection);
+    while (1)
+    {
+        if (pthread_mutex_lock(&connection->lock) < 0)
+        {
+            giveme_log("%s failed to lock connecton\n", __FUNCTION__);
+            return -1;
+        }
+        if (giveme_network_ping(connection) < 0)
+        {
+            pthread_mutex_unlock(&connection->lock);
+            giveme_network_disconnect(connection);
+            break;
+        }
+        giveme_network_packets_process(connection);
+        // Next step is to run the action queue and execute the last element on the stack.
+        giveme_network_action_execute_first(&connection->data->action_queue);
+        pthread_mutex_unlock(&connection->lock);
+    }
     return 0;
 }
 int giveme_network_connection_start(struct network_connection_data *data)
@@ -1089,7 +1196,7 @@ struct network_connection_data *giveme_network_connection_data_new()
 {
     int res = 0;
     struct network_connection_data *data = calloc(1, sizeof(struct network_connection_data));
-
+    giveme_network_action_queue_initialize(&data->action_queue);
 out:
     if (res < 0)
         return NULL;
@@ -1102,6 +1209,8 @@ int giveme_network_connection_data_free(struct network_connection_data *data)
     {
         close(data->sock);
     }
+
+    giveme_network_action_queue_destruct(&data->action_queue);
     free(data);
     return 0;
 }
@@ -1272,6 +1381,7 @@ void giveme_network_connection_connect_all_action_command_queue()
 
 void giveme_network_disconnect(struct network_connection *connection)
 {
+
     giveme_network_connection_data_free(connection->data);
     network.total_connected--;
     connection->data = NULL;
@@ -1317,70 +1427,40 @@ void giveme_network_relay(struct giveme_tcp_packet *packet)
     // not to send it again, resulting in an infinate loop
     giveme_network_relayed_packet_push(packet);
 }
-void giveme_network_broadcast_to_ips(struct giveme_tcp_packet *packet, const char (*ip_address)[GIVEME_IP_STRING_SIZE], size_t total_ips)
+
+struct network_broadcast_private* giveme_network_new_broadcast_private(struct giveme_tcp_packet* packet, struct network_connection* connection)
 {
-    struct in_addr addr = {};
-    // Let's try to connect to all those IP's just in case we dont have a connection yet
+    struct network_broadcast_private* private = calloc(1, sizeof(struct network_broadcast_private));
+    private->packet = packet;
+    private->connection = connection;
+}
 
-    for (size_t i = 0; i < total_ips; i++)
+void giveme_network_broadcast_private_free(struct network_broadcast_private* private)
+{
+    free(private);
+}
+
+void giveme_network_broadcast_action(void *data, size_t d_size)
+{
+    struct network_broadcast_private* private = data;
+    struct giveme_tcp_packet* packet = private->packet;
+    struct network_connection* connection = private->connection;
+    if (giveme_tcp_send_packet(connection, packet) < 0)
     {
-        if (inet_aton(ip_address[i], &addr) == 0)
-        {
-            giveme_log("inet_aton() failed\n");
-        }
-
-        giveme_network_connect_to_ip(addr);
-        struct network_connection *connection = giveme_network_get_connection(&addr);
-        if (connection)
-        {
-            // Alright we got a valid connection lets connect and broadcast this packet.
-
-            if (pthread_mutex_trylock(&connection->lock) == EBUSY)
-            {
-                continue;
-            }
-
-            if (!connection->data)
-            {
-                pthread_mutex_unlock(&connection->lock);
-                continue;
-            }
-
-            if (giveme_tcp_send_packet(connection, packet) < 0)
-            {
-                // Problem sending packet? Then we should remove this socket from the connections
-                giveme_log("%s problem sending packet to %s\n", __FUNCTION__, inet_ntoa(connection->data->addr.sin_addr));
-                giveme_network_disconnect(connection);
-            }
-
-            pthread_mutex_unlock(&connection->lock);
-        }
+        // Problem sending packet? Then we should remove this socket from the connections
+        giveme_log("%s problem sending packet to %s\n", __FUNCTION__, inet_ntoa(connection->data->addr.sin_addr));
     }
+
+    // Done? great free the private.
+    giveme_network_broadcast_private_free(private);
 }
 
 void giveme_network_broadcast(struct giveme_tcp_packet *packet)
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-        if (pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
-        {
-            continue;
-        }
-
-        if (!network.connections[i].data)
-        {
-            pthread_mutex_unlock(&network.connections[i].lock);
-            continue;
-        }
-
-        if (giveme_tcp_send_packet(&network.connections[i], packet) < 0)
-        {
-            // Problem sending packet? Then we should remove this socket from the connections
-            giveme_log("%s problem sending packet to %s\n", __FUNCTION__, inet_ntoa(network.connections[i].data->addr.sin_addr));
-            giveme_network_disconnect(&network.connections[i]);
-        }
-
-        pthread_mutex_unlock(&network.connections[i].lock);
+        struct network_broadcast_private* private = giveme_network_new_broadcast_private(packet, &network.connections[i]);
+        giveme_network_action_schedule_for_connection(&network.connections[i], giveme_network_broadcast_action, private, sizeof(struct network_broadcast_private));
     }
 }
 
@@ -1495,40 +1575,6 @@ void giveme_network_update_known_hashes()
         pthread_mutex_unlock(&network.connections[i].lock);
     }
     giveme_network_known_hashes_finalize_result();
-}
-
-void giveme_network_ping()
-{
-    struct giveme_tcp_packet packet = {};
-    packet.data.type = GIVEME_NETWORK_TCP_PACKET_TYPE_PING;
-
-    struct block *last_block = giveme_blockchain_back();
-    assert(last_block);
-    memcpy(packet.data.ping.last_hash, giveme_blockchain_block_hash(last_block), sizeof(packet.data.ping.last_hash));
-
-    for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
-    {
-        if (pthread_mutex_trylock(&network.connections[i].lock) == EBUSY)
-        {
-            continue;
-        }
-
-        // We will only ping once a second.
-        if (!network.connections[i].data || (time(NULL) - network.connections[i].data->last_contact) < 1)
-        {
-            pthread_mutex_unlock(&network.connections[i].lock);
-            continue;
-        }
-
-        if (giveme_tcp_send_packet(&network.connections[i], &packet) < 0)
-        {
-            // Problem sending packet? Then we should remove this socket from the connections
-            giveme_log("%s problem sending packet to %s\n", __FUNCTION__, inet_ntoa(network.connections[i].data->addr.sin_addr));
-            giveme_network_disconnect(&network.connections[i]);
-        }
-
-        pthread_mutex_unlock(&network.connections[i].lock);
-    }
 }
 
 int giveme_network_connection_socket(struct network_connection *connection)
@@ -2873,7 +2919,7 @@ void giveme_network_update_chain_from_found_peers()
         {
             // We got to keep pinging as this process can take a long time
             // we want people to still know we exist.
-            giveme_network_ping();
+            //   giveme_network_ping();
 
             int res = giveme_network_update_chain_for_block_from_peer(peer, current_index);
             if (res < 0)
@@ -3000,7 +3046,6 @@ void giveme_network_process_action(void *data, size_t d_size)
     // Kept getting issues with lock order. We will lock in the actual loop
     // this may result in slower operations than expected.
     giveme_lock_chain();
-    giveme_network_ping();
     if (network.blockchain.chain_requesting_update && (time(NULL) - network.blockchain.last_chain_update_request) > 30)
     {
         // We have given 30 seconds for people to tell us they are able to update our chain...
@@ -3259,14 +3304,7 @@ void giveme_network_initialize()
         goto out;
     }
 
-    if (pthread_mutex_init(&network.action_queue.lock, NULL) != 0)
-    {
-        giveme_log("Failed to initialize network action queue mutex\n");
-        res = -1;
-        goto out;
-    }
-
-    network.action_queue.action_vector = vector_create(sizeof(struct network_action));
+    giveme_network_action_queue_initialize(&network.action_queue);
 
     if (pthread_mutex_init(&network.hashes.lock, NULL) != 0)
     {

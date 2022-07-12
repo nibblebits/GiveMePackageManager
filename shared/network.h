@@ -23,7 +23,7 @@ struct network_last_hash
 
 /**
  * @brief Represents all the last hashes on every peer on the blockchain
- * 
+ *
  */
 struct network_last_hashes
 {
@@ -40,6 +40,14 @@ enum
     GIVEME_CONNECT_FLAG_ADD_TO_CONNECTIONS = 0b00000001
 };
 
+struct action_queue
+{
+    pthread_mutex_t lock;
+    // vector of network_action
+    struct vector *action_vector;
+};
+
+
 struct network_connection_data
 {
     int sock;
@@ -48,11 +56,16 @@ struct network_connection_data
     // The timestamp of the last communication with this socket.
     time_t last_contact;
 
+    // All connection actions need to be added to the action queue for processing
+    // on a single thread. THis should prevent concurrency problems.
+    struct action_queue action_queue;
+
     // Most recent block on this peers blockchain
     char block_hash[SHA256_STRING_LENGTH];
     // The public key of this connection... No key is valid.
     struct key key;
 };
+
 
 struct network_connection
 {
@@ -131,7 +144,7 @@ struct giveme_dataexchange_tcp_packet
         /**
          * @brief Upon receving this packet the following data of size "chunk_size" can be read
          * from the stream. This data is the chunk data
-         * 
+         *
          */
         struct giveme_dataexchange_package_send_chunk
         {
@@ -208,7 +221,7 @@ struct giveme_tcp_packet
             struct giveme_tcp_packet_package_downloaded
             {
                 // see shared_signed_data for signed data associated to this transaction
-                
+
                 // The IP address of the peer who now has the file.
                 // DYnamic IP addresses change frequnetly which can be a problem
                 // therefore we need a mechnism later on to be able to change the IP address.
@@ -258,7 +271,6 @@ struct giveme_tcp_packet
                 char filehash[SHA256_STRING_LENGTH];
             } download_package_as_host;
 
-
             // In case we want to add special packets in the future
             // we should reserve some data in the tcp packet
             // which will also affect the block size
@@ -269,6 +281,13 @@ struct giveme_tcp_packet
     // DO NOT WRITE VARIABLES UNDER HERE! DATA IS DOWNLOADED DEPNDING
     // ON THE TYPE OF PACKET.. VARIABLES HERE WONT BE SENT OVER NETWORK.
     // NEW VARIABLES MUST BE ABOVE THE PACKET_DATA STRUCTURE.
+};
+
+
+struct network_broadcast_private
+{
+    struct giveme_tcp_packet* packet;
+    struct network_connection* connection;
 };
 
 enum
@@ -397,9 +416,9 @@ enum
  * Such as a peer deciding to transfer funds, an awaiting transaction will be created
  * only on his CLIENT. Then this awaiting transaction will keep being transmitted after
  * each successful block cycle, until it becomes apart of the blockchain.
- * 
+ *
  * After constant failures eventually the transaction state will become STATE_FAILED.
- * 
+ *
  */
 struct network_awaiting_transaction
 {
@@ -409,11 +428,10 @@ struct network_awaiting_transaction
     struct giveme_tcp_packet packet;
 };
 
-
-typedef void (*NETWORK_ACTION_FUNCTION)(void* data, size_t size);
+typedef void (*NETWORK_ACTION_FUNCTION)(void *data, size_t size);
 struct network_action
 {
-    void* data;
+    void *data;
     size_t size;
     NETWORK_ACTION_FUNCTION func;
 };
@@ -429,19 +447,13 @@ struct network
     // The time when we last attempted to connect to a host
     time_t last_attempt_for_new_connections;
 
+    // The action queue for the network
+    struct action_queue action_queue;
+
     // The last hashes that are known to the network for all connected peers
     // we want to pull towards one last hash thats equal for everyone
     // Network will always download the chain to the most popular current last hash.
     struct network_last_hashes hashes;
-
-    // All network actions need to be added to the action queue for processing
-    // on a single thread. THis should prevent concurrency problems.
-    struct action_queue
-    {
-        pthread_mutex_t lock;
-        // vector of network_action
-        struct vector* action_vector;
-    } action_queue;
 
     struct network_transactions
     {
@@ -460,14 +472,14 @@ struct network
         // Open file descriptor for memory mapped file
         int fp;
         /**
-     * An array of tcp packet transactions that are awaiting for a block to be created for them
-     * During receving a new block if we have not found an associating transaction
-     * that matches this packet, then we can assume that the command to the network failed
-     * and it needs to be rebroadcast to the entire network for processing again.
-     * 
-     * When a block is found that matches this packet we must remove it from the awaiting queue.
-     * NOTE: THESE APPLY ONLY TO OUR OWN CLIENTS NETWORK TRANSACTIONS CREATED AND SIGNED BY US!
-     */
+         * An array of tcp packet transactions that are awaiting for a block to be created for them
+         * During receving a new block if we have not found an associating transaction
+         * that matches this packet, then we can assume that the command to the network failed
+         * and it needs to be rebroadcast to the entire network for processing again.
+         *
+         * When a block is found that matches this packet we must remove it from the awaiting queue.
+         * NOTE: THESE APPLY ONLY TO OUR OWN CLIENTS NETWORK TRANSACTIONS CREATED AND SIGNED BY US!
+         */
         struct network_awaiting_transaction *data;
 
         // Total awaiting transactions that we have made
@@ -528,50 +540,50 @@ void giveme_network_update_chain();
 int giveme_network_my_awaiting_transaction_add(struct network_awaiting_transaction *transaction);
 void giveme_network_my_awaiting_transactions_lock();
 void giveme_network_my_awaiting_transactions_unlock();
-struct network_awaiting_transaction* giveme_network_my_awaiting_transactions_get_by_index(int index);
+struct network_awaiting_transaction *giveme_network_my_awaiting_transactions_get_by_index(int index);
 void giveme_network_rebroadcast_my_pending_transactions();
-const char* giveme_network_awaiting_transaction_state_string(struct network_awaiting_transaction* transaction);
+const char *giveme_network_awaiting_transaction_state_string(struct network_awaiting_transaction *transaction);
 
 struct shared_signed_data *giveme_tcp_packet_shared_signed_data(struct giveme_tcp_packet *packet);
 
 int giveme_network_download_package(const char *package_filehash, char *filename_out, size_t filename_size);
 /**
  * @brief Returns download information for a current active download
- * 
- * @param download 
- * @return struct network_package_summary_download_info 
+ *
+ * @param download
+ * @return struct network_package_summary_download_info
  */
 struct network_package_summary_download_info giveme_network_download_info(struct network_package_download *download);
 
 /**
  * @brief Signed the packet
- * 
- * @param packet 
- * @return int 
+ *
+ * @param packet
+ * @return int
  */
 int giveme_tcp_packet_sign(struct giveme_tcp_packet *packet);
 
 /**
- * @brief Returns the packet ID. 
+ * @brief Returns the packet ID.
  * This function only works for signed packets.
- * 
- * @param packet 
+ *
+ * @param packet
  * @return int Returns the packet ID or -1 on error.
  */
 int giveme_tcp_packet_id(struct giveme_tcp_packet *packet);
 /**
  * @brief Returns true if this packet is signed.
- * 
- * @param packet 
- * @return true 
- * @return false 
+ *
+ * @param packet
+ * @return true
+ * @return false
  */
 bool giveme_tcp_packet_signed(struct giveme_tcp_packet *packet);
 
 /**
  * @brief Verifies that the signature is what signed the data in the packet.
- * 
- * @param packet 
+ *
+ * @param packet
  * @return Returns 0 on signature validation being success otherwise a negative value.
  */
 int giveme_tcp_packet_signature_verify(struct giveme_tcp_packet *packet);
