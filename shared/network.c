@@ -89,11 +89,11 @@ void giveme_network_action_schedule_for_queue(struct action_queue *action_queue,
  * @brief If you use this function you may not schedule to the action queue directly for connections
  * You must always use this function because the underlying locking mechnism for the action queue is not used
  * the connection lock is used instead.
- * 
- * @param connection 
- * @param func 
- * @param data 
- * @param size 
+ *
+ * @param connection
+ * @param func
+ * @param data
+ * @param size
  */
 void giveme_network_action_schedule_for_connection(struct network_connection *connection, NETWORK_ACTION_FUNCTION func, void *data, size_t size)
 {
@@ -110,7 +110,7 @@ void giveme_network_action_schedule_for_connection(struct network_connection *co
 
     // No need to lock the action queue lock because we dont want nested locks
     // we have already locked the connection one.
-    struct action_queue* action_queue = &connection->data->action_queue;
+    struct action_queue *action_queue = &connection->data->action_queue;
     struct network_action action;
     bzero(&action, sizeof(action));
 
@@ -155,6 +155,25 @@ int giveme_network_action_execute_first(struct action_queue *action_queue)
         vector_pop(action_queue->action_vector);
     }
     pthread_mutex_unlock(&action_queue->lock);
+    if (action)
+    {
+        giveme_network_action_execute(&saction);
+    }
+    return 0;
+}
+
+int giveme_network_action_execute_first_no_locks(struct action_queue *action_queue)
+{
+    // We use a stack action because we dont want to hold a lock for an entire
+    // execution of the action where memory could easily be spilled and shifted.
+    struct network_action saction;
+    struct network_action *action = NULL;
+    action = vector_back_or_null(action_queue->action_vector);
+    if (action)
+    {
+        memcpy(&saction, action, sizeof(saction));
+        vector_pop(action_queue->action_vector);
+    }
     if (action)
     {
         giveme_network_action_execute(&saction);
@@ -1174,7 +1193,8 @@ int giveme_network_connection_thread(struct queued_work *work)
         }
         giveme_network_packets_process(connection);
         // Next step is to run the action queue and execute the last element on the stack.
-        giveme_network_action_execute_first(&connection->data->action_queue);
+        giveme_network_action_execute_first_no_locks(&connection->data->action_queue);
+
         pthread_mutex_unlock(&connection->lock);
     }
     return 0;
@@ -1428,23 +1448,23 @@ void giveme_network_relay(struct giveme_tcp_packet *packet)
     giveme_network_relayed_packet_push(packet);
 }
 
-struct network_broadcast_private* giveme_network_new_broadcast_private(struct giveme_tcp_packet* packet, struct network_connection* connection)
+struct network_broadcast_private *giveme_network_new_broadcast_private(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
-    struct network_broadcast_private* private = calloc(1, sizeof(struct network_broadcast_private));
+    struct network_broadcast_private *private = calloc(1, sizeof(struct network_broadcast_private));
     private->packet = packet;
     private->connection = connection;
 }
 
-void giveme_network_broadcast_private_free(struct network_broadcast_private* private)
+void giveme_network_broadcast_private_free(struct network_broadcast_private *private)
 {
     free(private);
 }
 
 void giveme_network_broadcast_action(void *data, size_t d_size)
 {
-    struct network_broadcast_private* private = data;
-    struct giveme_tcp_packet* packet = private->packet;
-    struct network_connection* connection = private->connection;
+    struct network_broadcast_private *private = data;
+    struct giveme_tcp_packet *packet = private->packet;
+    struct network_connection *connection = private->connection;
     if (giveme_tcp_send_packet(connection, packet) < 0)
     {
         // Problem sending packet? Then we should remove this socket from the connections
@@ -1459,7 +1479,7 @@ void giveme_network_broadcast(struct giveme_tcp_packet *packet)
 {
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
-        struct network_broadcast_private* private = giveme_network_new_broadcast_private(packet, &network.connections[i]);
+        struct network_broadcast_private *private = giveme_network_new_broadcast_private(packet, &network.connections[i]);
         giveme_network_action_schedule_for_connection(&network.connections[i], giveme_network_broadcast_action, private, sizeof(struct network_broadcast_private));
     }
 }
