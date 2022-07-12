@@ -1453,12 +1453,15 @@ void giveme_network_relay(struct giveme_tcp_packet *packet)
 struct network_broadcast_private *giveme_network_new_broadcast_private(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     struct network_broadcast_private *private = calloc(1, sizeof(struct network_broadcast_private));
-    private->packet = packet;
+    struct giveme_tcp_packet *packet_copy = calloc(1, sizeof(struct giveme_tcp_packet));
+    memcpy(packet_copy, packet, sizeof(struct giveme_tcp_packet));
+    private->packet = packet_copy;
     private->connection = connection;
 }
 
 void giveme_network_broadcast_private_free(struct network_broadcast_private *private)
 {
+    free(private->packet);
     free(private);
 }
 
