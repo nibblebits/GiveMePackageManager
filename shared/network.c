@@ -82,6 +82,8 @@ void giveme_network_action_schedule_for_queue(struct action_queue *action_queue,
 
     pthread_mutex_lock(&action_queue->lock);
     vector_push_at(action_queue->action_vector, 0, &action);
+    giveme_log("%s added action for scheduleing. COUNT=%i\n", __FUNCTION__, vector_count(action_queue->action_vector));
+
     pthread_mutex_unlock(&action_queue->lock);
 }
 
