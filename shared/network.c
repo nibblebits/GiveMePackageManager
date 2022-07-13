@@ -65,7 +65,7 @@ bool giveme_network_download_is_complete(struct network_package_download *downlo
 int giveme_finalize_download(struct network_package_download *download);
 void giveme_network_download_remove_and_free(struct network_package_download *download);
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection);
-void giveme_network_disconnect(struct network_connection *connection);
+void giveme_network_disconnect(struct network_connection_data *connection);
 int giveme_network_connection_socket(struct network_connection *connection);
 
 void giveme_network_action_schedule_for_queue(struct action_queue *action_queue, NETWORK_ACTION_FUNCTION func, void *data, size_t size)
@@ -1133,16 +1133,21 @@ struct network_connection *giveme_network_connection_add(struct network_connecti
     return conn_slot;
 }
 
-void giveme_network_packets_process(struct network_connection *connection)
+int giveme_network_packets_process(struct network_connection *connection)
 {
+    int res = 0;
     int sock = giveme_network_connection_socket(connection);
 
     struct giveme_tcp_packet packet = {};
-    if (giveme_tcp_recv_packet(connection, &packet) == 0)
+    res = giveme_tcp_recv_packet(connection, &packet);
+    if (res < 0)
     {
-        // We have a packet then process it.
-        giveme_network_packet_process(&packet, connection);
+        return res;
     }
+    // We have a packet then process it.
+    giveme_network_packet_process(&packet, connection);
+
+    return res;
 }
 
 int giveme_network_ping(struct network_connection *connection)
@@ -1190,11 +1195,25 @@ int giveme_network_connection_thread(struct queued_work *work)
         }
         if (giveme_network_ping(connection) < 0)
         {
-            pthread_mutex_unlock(&connection->lock);
             giveme_network_disconnect(connection);
+            pthread_mutex_unlock(&connection->lock);
             break;
         }
-        giveme_network_packets_process(connection);
+
+        if (giveme_network_packets_process(connection) < 0)
+        {
+            /*
+             * Issue processing packets, disconnect the client. It is probably
+             * already a dead socket anyway. Even if its not, we dont want to deal with this error
+             * let them reconnect. It could be a spammer DDOS attack.. Better to disconnect
+             * when their is unknown problems.
+             *
+             */
+            giveme_network_disconnect(connection);
+            pthread_mutex_unlock(&connection->lock);
+            res = -1;
+            break;
+        }
         // Next step is to run the action queue and execute the last element on the stack.
         giveme_network_action_execute_first_no_locks(&connection->data->action_queue);
 
@@ -1405,11 +1424,10 @@ void giveme_network_connection_connect_all_action_command_queue()
     giveme_network_action_schedule(giveme_network_connection_connect_all_action, NULL, 0);
 }
 
-void giveme_network_disconnect(struct network_connection *connection)
+void giveme_network_disconnect(struct network_connection_data *connection_data)
 {
-    giveme_network_connection_data_free(connection->data);
+    giveme_network_connection_data_free(connection_data);
     network.total_connected--;
-    connection->data = NULL;
 }
 
 void giveme_network_relayed_packet_push(struct giveme_tcp_packet *packet)
