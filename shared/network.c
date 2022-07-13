@@ -1199,6 +1199,9 @@ int giveme_network_connection_thread(struct queued_work *work)
         giveme_network_action_execute_first_no_locks(&connection->data->action_queue);
 
         pthread_mutex_unlock(&connection->lock);
+
+        // Let's give some time for others to use the lock.
+        usleep(100);
     }
     return res;
 }
