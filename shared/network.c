@@ -1171,7 +1171,6 @@ int giveme_network_ping(struct network_connection *connection)
     // We will only ping once a second.
     if (!connection->data || (time(NULL) - connection->data->last_contact) < 2)
     {
-        giveme_log("mo ping %i\n", connection->data->last_contact);
         return 0;
     }
 
