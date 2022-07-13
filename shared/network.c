@@ -65,7 +65,7 @@ bool giveme_network_download_is_complete(struct network_package_download *downlo
 int giveme_finalize_download(struct network_package_download *download);
 void giveme_network_download_remove_and_free(struct network_package_download *download);
 void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct network_connection *connection);
-void giveme_network_disconnect(struct network_connection_data *connection);
+void giveme_network_disconnect(struct network_connection *connection);
 int giveme_network_connection_socket(struct network_connection *connection);
 
 void giveme_network_action_schedule_for_queue(struct action_queue *action_queue, NETWORK_ACTION_FUNCTION func, void *data, size_t size)
@@ -1424,9 +1424,9 @@ void giveme_network_connection_connect_all_action_command_queue()
     giveme_network_action_schedule(giveme_network_connection_connect_all_action, NULL, 0);
 }
 
-void giveme_network_disconnect(struct network_connection_data *connection_data)
+void giveme_network_disconnect(struct network_connection *connection)
 {
-    giveme_network_connection_data_free(connection_data);
+    giveme_network_connection_data_free(connection->data);
     network.total_connected--;
 }
 
