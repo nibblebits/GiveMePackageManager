@@ -1169,8 +1169,9 @@ int giveme_network_ping(struct network_connection *connection)
     memcpy(packet.data.ping.last_hash, giveme_blockchain_block_hash(last_block), sizeof(packet.data.ping.last_hash));
 
     // We will only ping once a second.
-    if (!connection->data || (time(NULL) - connection->data->last_contact) < 1)
+    if (!connection->data || (time(NULL) - connection->data->last_contact) < 2)
     {
+        giveme_log("mo ping %i\n", connection->data->last_contact);
         return 0;
     }
 
