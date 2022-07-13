@@ -848,7 +848,7 @@ int giveme_tcp_recv_bytes_no_timeout(int client, void *ptr, size_t amount)
     while (amount_left > 0)
     {
         res = recv(client, ptr + amount_read, amount_left, MSG_WAITALL);
-        if (res <= 0)
+        if (res < 0)
         {
             res = -1;
             return res;
