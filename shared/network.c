@@ -1229,7 +1229,7 @@ int giveme_network_connection_thread(struct queued_work *work)
         pthread_mutex_unlock(&connection->lock);
 
         // Let's give some time for others to use the lock and to prevent us sending so many packets
-        usleep(150000);
+        usleep(10000);
     }
     return res;
 }
@@ -2073,7 +2073,6 @@ bool giveme_network_needs_chain_update_do_lock()
 void giveme_network_packet_handle_ping(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     memcpy(connection->data->block_hash, packet->data.ping.last_hash, sizeof(connection->data->block_hash));
-    giveme_log("%s received a ping\n", __FUNCTION__);
 }
 
 /**
@@ -2154,33 +2153,33 @@ void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct netw
         giveme_network_packet_handle_ping(packet, connection);
         break;
 
-    // case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
-    //     giveme_network_packet_handle_publish_package(packet, connection);
-    //     break;
+     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
+         giveme_network_packet_handle_publish_package(packet, connection);
+         break;
 
-    // case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY:
-    //     giveme_network_packet_handle_publish_key(packet, connection);
-    //     break;
+     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY:
+         giveme_network_packet_handle_publish_key(packet, connection);
+         break;
 
-    // case GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK:
-    //     giveme_network_packet_handle_verified_block(packet, connection);
-    //     break;
+     case GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK:
+         giveme_network_packet_handle_verified_block(packet, connection);
+         break;
 
-    // case GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN:
-    //     giveme_network_packet_handle_update_chain(packet, connection);
-    //     break;
+     case GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN:
+         giveme_network_packet_handle_update_chain(packet, connection);
+         break;
 
-    // case GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE:
-    //     giveme_network_packet_handle_update_chain_response(packet, connection);
-    //     break;
+     case GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE:
+         giveme_network_packet_handle_update_chain_response(packet, connection);
+         break;
 
-    // case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE:
-    //     giveme_network_packet_handle_downloaded_package(packet, connection);
-    //     break;
+     case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE:
+         giveme_network_packet_handle_downloaded_package(packet, connection);
+         break;
 
-    // case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOAD_PACKAGE_AS_HOST:
-    //     giveme_network_packet_handle_download_package_as_host(packet, connection);
-    //     break;
+     case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOAD_PACKAGE_AS_HOST:
+         giveme_network_packet_handle_download_package_as_host(packet, connection);
+         break;
     }
 }
 
