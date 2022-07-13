@@ -971,7 +971,6 @@ int giveme_verify_packet(struct giveme_tcp_packet *packet)
     sha256_data(&packet->data, recalculated_hash, sizeof(packet->data));
     if (strncmp(recalculated_hash, packet->data_hash, sizeof(recalculated_hash)) != 0)
     {
-        return 0;
         giveme_log("%s provided hash does not match the hash we calculated\n", __FUNCTION__);
         res = -1;
         goto out;
@@ -2074,6 +2073,7 @@ bool giveme_network_needs_chain_update_do_lock()
 void giveme_network_packet_handle_ping(struct giveme_tcp_packet *packet, struct network_connection *connection)
 {
     memcpy(connection->data->block_hash, packet->data.ping.last_hash, sizeof(connection->data->block_hash));
+    giveme_log("%s received a ping\n", __FUNCTION__);
 }
 
 /**
@@ -2154,33 +2154,33 @@ void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct netw
         giveme_network_packet_handle_ping(packet, connection);
         break;
 
-    case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
-        giveme_network_packet_handle_publish_package(packet, connection);
-        break;
+    // case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
+    //     giveme_network_packet_handle_publish_package(packet, connection);
+    //     break;
 
-    case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY:
-        giveme_network_packet_handle_publish_key(packet, connection);
-        break;
+    // case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY:
+    //     giveme_network_packet_handle_publish_key(packet, connection);
+    //     break;
 
-    case GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK:
-        giveme_network_packet_handle_verified_block(packet, connection);
-        break;
+    // case GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK:
+    //     giveme_network_packet_handle_verified_block(packet, connection);
+    //     break;
 
-    case GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN:
-        giveme_network_packet_handle_update_chain(packet, connection);
-        break;
+    // case GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN:
+    //     giveme_network_packet_handle_update_chain(packet, connection);
+    //     break;
 
-    case GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE:
-        giveme_network_packet_handle_update_chain_response(packet, connection);
-        break;
+    // case GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE:
+    //     giveme_network_packet_handle_update_chain_response(packet, connection);
+    //     break;
 
-    case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE:
-        giveme_network_packet_handle_downloaded_package(packet, connection);
-        break;
+    // case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE:
+    //     giveme_network_packet_handle_downloaded_package(packet, connection);
+    //     break;
 
-    case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOAD_PACKAGE_AS_HOST:
-        giveme_network_packet_handle_download_package_as_host(packet, connection);
-        break;
+    // case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOAD_PACKAGE_AS_HOST:
+    //     giveme_network_packet_handle_download_package_as_host(packet, connection);
+    //     break;
     }
 }
 
