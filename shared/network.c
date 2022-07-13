@@ -791,6 +791,14 @@ int giveme_tcp_client_disable_blocking(int client)
     return 0;
 }
 
+/**
+ * @brief [DEPRECATED]
+ * 
+ * @param client 
+ * @param ptr 
+ * @param amount 
+ * @return int 
+ */
 int giveme_tcp_recv_bytes_no_block(int client, void *ptr, size_t amount)
 {
     int res = 0;
@@ -1000,7 +1008,7 @@ int giveme_tcp_recv_packet(struct network_connection *connection, struct giveme_
     bzero(packet, sizeof(struct giveme_tcp_packet));
 
     int client = connection->data->sock;
-    int res = giveme_tcp_recv_bytes_no_block(client, packet, giveme_tcp_header_size()) > 0 ? 0 : -1;
+    int res = giveme_tcp_recv_bytes(client, packet, giveme_tcp_header_size(), 3) > 0 ? 0 : -1;
     if (res < 0)
     {
         goto out;
