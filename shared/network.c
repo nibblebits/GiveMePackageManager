@@ -1147,14 +1147,15 @@ int giveme_network_packets_process(struct network_connection *connection)
     int sock = giveme_network_connection_socket(connection);
 
     struct giveme_tcp_packet packet = {};
-    res = giveme_tcp_recv_packet(connection, &packet);
-    if (res < 0)
+    if(giveme_tcp_recv_packet(connection, &packet) < 0)
     {
-        return res;
+        goto out;
     }
+
     // We have a packet then process it.
     giveme_network_packet_process(&packet, connection);
 
+out:
     return res;
 }
 
