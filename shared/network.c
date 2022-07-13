@@ -3093,7 +3093,6 @@ bool giveme_network_time_to_forward_ports()
 void giveme_network_process_action_queue();
 void giveme_network_process_action(void *data, size_t d_size)
 {
-    return;
     if (giveme_network_time_to_forward_ports())
     {
         giveme_network_upnp_port_forward();
