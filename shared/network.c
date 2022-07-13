@@ -947,7 +947,7 @@ int giveme_tcp_send_packet(struct network_connection *connection, struct giveme_
 
     // Send the payload of the packet
     res = giveme_tcp_send_bytes(client, (void *)packet + giveme_tcp_payload_offset(), giveme_tcp_packet_payload_size(packet));
-    if (res == 0)
+    if (res > 0)
     {
         connection->data->last_contact = time(NULL);
     }
