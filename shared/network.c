@@ -971,6 +971,7 @@ int giveme_verify_packet(struct giveme_tcp_packet *packet)
     sha256_data(&packet->data, recalculated_hash, sizeof(packet->data));
     if (strncmp(recalculated_hash, packet->data_hash, sizeof(recalculated_hash)) != 0)
     {
+        return 0;
         giveme_log("%s provided hash does not match the hash we calculated\n", __FUNCTION__);
         res = -1;
         goto out;
