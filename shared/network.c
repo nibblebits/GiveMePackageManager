@@ -1435,6 +1435,7 @@ void giveme_network_connection_connect_all_action_command_queue()
 void giveme_network_disconnect(struct network_connection *connection)
 {
     giveme_network_connection_data_free(connection->data);
+    connection->data = NULL;
     network.total_connected--;
 }
 
