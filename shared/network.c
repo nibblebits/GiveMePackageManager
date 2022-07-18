@@ -169,14 +169,14 @@ int giveme_network_action_next_no_locks(struct action_queue *action_queue, struc
     struct network_action *action = NULL;
     struct vector *chosen_vector = NULL;
     pthread_mutex_lock(&action_queue->lock);
-    chosen_vector = &action_queue->action_vector_low_importance;
-    if (!vector_empty(&action_queue->action_vector_high_importance))
+    chosen_vector = action_queue->action_vector_low_importance;
+    if (!vector_empty(action_queue->action_vector_high_importance))
     {
-        chosen_vector = &action_queue->action_vector_high_importance;
+        chosen_vector = action_queue->action_vector_high_importance;
     }
-    else if (!vector_empty(&action_queue->action_vector_medium_importance))
+    else if (!vector_empty(action_queue->action_vector_medium_importance))
     {
-        chosen_vector = &action_queue->action_vector_medium_importance;
+        chosen_vector = action_queue->action_vector_medium_importance;
     }
 
     action = vector_back_or_null(chosen_vector);
@@ -196,14 +196,14 @@ int giveme_network_action_next(struct action_queue *action_queue, struct network
     struct network_action *action = NULL;
     struct vector *chosen_vector = NULL;
     pthread_mutex_lock(&action_queue->lock);
-    chosen_vector = &action_queue->action_vector_low_importance;
-    if (!vector_empty(&action_queue->action_vector_high_importance))
+    chosen_vector = action_queue->action_vector_low_importance;
+    if (!vector_empty(action_queue->action_vector_high_importance))
     {
-        chosen_vector = &action_queue->action_vector_high_importance;
+        chosen_vector = action_queue->action_vector_high_importance;
     }
-    else if (!vector_empty(&action_queue->action_vector_medium_importance))
+    else if (!vector_empty(action_queue->action_vector_medium_importance))
     {
-        chosen_vector = &action_queue->action_vector_medium_importance;
+        chosen_vector = action_queue->action_vector_medium_importance;
     }
 
     action = vector_back_or_null(chosen_vector);
