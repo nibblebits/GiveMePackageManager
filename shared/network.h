@@ -44,7 +44,9 @@ struct action_queue
 {
     pthread_mutex_t lock;
     // vector of network_action
-    struct vector *action_vector;
+    struct vector *action_vector_high_importance;
+    struct vector* action_vector_medium_importance;
+    struct vector* action_vector_low_importance;
 };
 
 
@@ -433,6 +435,9 @@ struct network_action
 {
     void *data;
     size_t size;
+    // The lower the priority the sooner it will execute. If we have two actions one has priority of 2 and this one has
+    // priority of 1. This one will execute first.
+    int priority;
     NETWORK_ACTION_FUNCTION func;
 };
 

@@ -96,4 +96,13 @@
 
 // We can tip a maximum of four people who assisted in us downloading a file from.
 #define GIVEME_MAX_TIPS_PER_DOWNLOAD 4
+
+
+enum
+{
+    ACTION_QUEUE_PRIORITY_HIGH_IMPORTANCE = 0,
+    ACTION_QUEUE_PRIORITY_MEDIUM_IMPORTANTANCE = 1,
+    ACTION_QUEUE_PRIORITY_LOW_IMPORTANCE = 2,
+};
+
 #endif

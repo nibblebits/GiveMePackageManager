@@ -68,7 +68,26 @@ void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct netw
 void giveme_network_disconnect(struct network_connection *connection);
 int giveme_network_connection_socket(struct network_connection *connection);
 
-void giveme_network_action_schedule_for_queue(struct action_queue *action_queue, NETWORK_ACTION_FUNCTION func, void *data, size_t size)
+struct vector *giveme_network_action_get_vector(struct action_queue *queue, int priority)
+{
+    struct vector *vec = NULL;
+    if (priority == ACTION_QUEUE_PRIORITY_HIGH_IMPORTANCE)
+    {
+        vec = &queue->action_vector_high_importance;
+    }
+    else if (priority == ACTION_QUEUE_PRIORITY_MEDIUM_IMPORTANTANCE)
+    {
+        vec = &queue->action_vector_medium_importance;
+    }
+    else if (priority == ACTION_QUEUE_PRIORITY_LOW_IMPORTANCE)
+    {
+        vec = &queue->action_vector_low_importance;
+    }
+
+    return vec;
+}
+
+void giveme_network_action_schedule_for_queue(struct action_queue *action_queue, NETWORK_ACTION_FUNCTION func, void *data, size_t size, int priority)
 {
     struct network_action action;
     bzero(&action, sizeof(action));
@@ -78,11 +97,13 @@ void giveme_network_action_schedule_for_queue(struct action_queue *action_queue,
         action.data = data;
         action.size = size;
     }
+    action.priority = priority;
     action.func = func;
 
     pthread_mutex_lock(&action_queue->lock);
-    vector_push_at(action_queue->action_vector, 0, &action);
-
+    struct vector *vec = giveme_network_action_get_vector(action_queue, priority);
+    assert(vec);
+    vector_push_at(vec, 0, &action);
     pthread_mutex_unlock(&action_queue->lock);
 }
 
@@ -96,8 +117,9 @@ void giveme_network_action_schedule_for_queue(struct action_queue *action_queue,
  * @param data
  * @param size
  */
-void giveme_network_action_schedule_for_connection(struct network_connection *connection, NETWORK_ACTION_FUNCTION func, void *data, size_t size)
+void giveme_network_action_schedule_for_connection(struct network_connection *connection, NETWORK_ACTION_FUNCTION func, void *data, size_t size, int priority)
 {
+    assert(priority == ACTION_QUEUE_PRIORITY_LOW_IMPORTANCE || priority == ACTION_QUEUE_PRIORITY_MEDIUM_IMPORTANTANCE || priority == ACTION_QUEUE_PRIORITY_HIGH_IMPORTANCE);
     if (pthread_mutex_lock(&connection->lock) == EBUSY)
     {
         return;
@@ -120,20 +142,80 @@ void giveme_network_action_schedule_for_connection(struct network_connection *co
         action.data = data;
         action.size = size;
     }
+    action.priority = priority;
     action.func = func;
 
-    vector_push_at(action_queue->action_vector, 0, &action);
+    pthread_mutex_lock(&action_queue->lock);
+    struct vector *vec = giveme_network_action_get_vector(action_queue, priority);
+    assert(vec);
+    vector_push_at(vec, 0, &action);
+    pthread_mutex_unlock(&action_queue->lock);
+
     pthread_mutex_unlock(&connection->lock);
 }
 
-void giveme_network_action_schedule(NETWORK_ACTION_FUNCTION func, void *data, size_t size)
+void giveme_network_action_schedule(NETWORK_ACTION_FUNCTION func, void *data, size_t size, int priority)
 {
-    giveme_network_action_schedule_for_queue(&network.action_queue, func, data, size);
+    giveme_network_action_schedule_for_queue(&network.action_queue, func, data, size, priority);
 }
 
 void giveme_network_action_execute(struct network_action *action)
 {
     action->func(action->data, action->size);
+}
+
+int giveme_network_action_next_no_locks(struct action_queue *action_queue, struct network_action *action_out)
+{
+    struct network_action *action = NULL;
+    struct vector *chosen_vector = NULL;
+    pthread_mutex_lock(&action_queue->lock);
+    chosen_vector = &action_queue->action_vector_low_importance;
+    if (!vector_empty(&action_queue->action_vector_high_importance))
+    {
+        chosen_vector = &action_queue->action_vector_high_importance;
+    }
+    else if (!vector_empty(&action_queue->action_vector_medium_importance))
+    {
+        chosen_vector = &action_queue->action_vector_medium_importance;
+    }
+
+    action = vector_back_or_null(chosen_vector);
+    pthread_mutex_unlock(&action_queue->lock);
+
+    if (action)
+    {
+        memcpy(action_out, action, sizeof(struct network_action));
+    }
+
+    vector_pop(chosen_vector);
+    return action ? 0 : -1;
+}
+
+int giveme_network_action_next(struct action_queue *action_queue, struct network_action *action_out)
+{
+    struct network_action *action = NULL;
+    struct vector *chosen_vector = NULL;
+    pthread_mutex_lock(&action_queue->lock);
+    chosen_vector = &action_queue->action_vector_low_importance;
+    if (!vector_empty(&action_queue->action_vector_high_importance))
+    {
+        chosen_vector = &action_queue->action_vector_high_importance;
+    }
+    else if (!vector_empty(&action_queue->action_vector_medium_importance))
+    {
+        chosen_vector = &action_queue->action_vector_medium_importance;
+    }
+
+    action = vector_back_or_null(chosen_vector);
+    pthread_mutex_unlock(&action_queue->lock);
+
+    if (action)
+    {
+        memcpy(action_out, action, sizeof(struct network_action));
+    }
+
+    vector_pop(chosen_vector);
+    return action ? 0 : -1;
 }
 
 /**
@@ -147,16 +229,7 @@ int giveme_network_action_execute_first(struct action_queue *action_queue)
     // We use a stack action because we dont want to hold a lock for an entire
     // execution of the action where memory could easily be spilled and shifted.
     struct network_action saction;
-    struct network_action *action = NULL;
-    pthread_mutex_lock(&action_queue->lock);
-    action = vector_back_or_null(action_queue->action_vector);
-    if (action)
-    {
-        memcpy(&saction, action, sizeof(saction));
-        vector_pop(action_queue->action_vector);
-    }
-    pthread_mutex_unlock(&action_queue->lock);
-    if (action)
+    if (giveme_network_action_next(action_queue, &saction) == 0)
     {
         giveme_network_action_execute(&saction);
     }
@@ -167,15 +240,8 @@ int giveme_network_action_execute_first_no_locks(struct action_queue *action_que
 {
     // We use a stack action because we dont want to hold a lock for an entire
     // execution of the action where memory could easily be spilled and shifted.
-    struct network_action saction;
-    struct network_action *action = NULL;
-    action = vector_back_or_null(action_queue->action_vector);
-    if (action)
-    {
-        memcpy(&saction, action, sizeof(saction));
-        vector_pop(action_queue->action_vector);
-    }
-    if (action)
+   struct network_action saction;
+    if (giveme_network_action_next_no_locks(action_queue, &saction) == 0)
     {
         giveme_network_action_execute(&saction);
     }
@@ -192,7 +258,11 @@ int giveme_network_action_queue_initialize(struct action_queue *action_queue)
         goto out;
     }
 
-    action_queue->action_vector = vector_create(sizeof(struct network_action));
+    // Why have one vector and worry about shifting data based on priority.. Screw that three vectors it is.
+    action_queue->action_vector_high_importance = vector_create(sizeof(struct network_action));
+    action_queue->action_vector_medium_importance = vector_create(sizeof(struct network_action));
+    action_queue->action_vector_low_importance = vector_create(sizeof(struct network_action));
+
 out:
     return res;
 }
@@ -200,7 +270,9 @@ out:
 void giveme_network_action_queue_destruct(struct action_queue *action_queue)
 {
     pthread_mutex_destroy(&action_queue->lock);
-    vector_free(action_queue->action_vector);
+    vector_free(action_queue->action_vector_high_importance);
+    vector_free(action_queue->action_vector_medium_importance);
+    vector_free(action_queue->action_vector_low_importance);
 }
 
 int giveme_network_action_thread(struct queued_work *work)
@@ -793,11 +865,11 @@ int giveme_tcp_client_disable_blocking(int client)
 
 /**
  * @brief [DEPRECATED]
- * 
- * @param client 
- * @param ptr 
- * @param amount 
- * @return int 
+ *
+ * @param client
+ * @param ptr
+ * @param amount
+ * @return int
  */
 int giveme_tcp_recv_bytes_no_block(int client, void *ptr, size_t amount)
 {
@@ -1147,7 +1219,7 @@ int giveme_network_packets_process(struct network_connection *connection)
     int sock = giveme_network_connection_socket(connection);
 
     struct giveme_tcp_packet packet = {};
-    if(giveme_tcp_recv_packet(connection, &packet) < 0)
+    if (giveme_tcp_recv_packet(connection, &packet) < 0)
     {
         goto out;
     }
@@ -1367,6 +1439,13 @@ int giveme_network_connect_to_ip(struct in_addr ip)
     }
     return res;
 }
+
+void giveme_network_connect_action(void *data, size_t d_size)
+{
+    struct in_addr *addr = data;
+
+    free(data);
+}
 int giveme_network_connect()
 {
     // If not much time has passed we will wait..
@@ -1430,7 +1509,7 @@ void giveme_network_connection_connect_all_action(void *data, size_t d_size)
  */
 void giveme_network_connection_connect_all_action_command_queue()
 {
-    giveme_network_action_schedule(giveme_network_connection_connect_all_action, NULL, 0);
+    giveme_network_action_schedule(giveme_network_connection_connect_all_action, NULL, 0, ACTION_QUEUE_PRIORITY_MEDIUM_IMPORTANTANCE);
 }
 
 void giveme_network_disconnect(struct network_connection *connection)
@@ -1516,7 +1595,7 @@ void giveme_network_broadcast(struct giveme_tcp_packet *packet)
     for (int i = 0; i < GIVEME_TCP_SERVER_MAX_CONNECTIONS; i++)
     {
         struct network_broadcast_private *private = giveme_network_new_broadcast_private(packet, &network.connections[i]);
-        giveme_network_action_schedule_for_connection(&network.connections[i], giveme_network_broadcast_action, private, sizeof(struct network_broadcast_private));
+        giveme_network_action_schedule_for_connection(&network.connections[i], giveme_network_broadcast_action, private, sizeof(struct network_broadcast_private), ACTION_QUEUE_PRIORITY_HIGH_IMPORTANCE);
     }
 }
 
@@ -2153,33 +2232,33 @@ void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct netw
         giveme_network_packet_handle_ping(packet, connection);
         break;
 
-     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
-         giveme_network_packet_handle_publish_package(packet, connection);
-         break;
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PACKAGE:
+        giveme_network_packet_handle_publish_package(packet, connection);
+        break;
 
-     case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY:
-         giveme_network_packet_handle_publish_key(packet, connection);
-         break;
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_PUBLISH_PUBLIC_KEY:
+        giveme_network_packet_handle_publish_key(packet, connection);
+        break;
 
-     case GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK:
-         giveme_network_packet_handle_verified_block(packet, connection);
-         break;
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_VERIFIED_BLOCK:
+        giveme_network_packet_handle_verified_block(packet, connection);
+        break;
 
-     case GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN:
-         giveme_network_packet_handle_update_chain(packet, connection);
-         break;
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN:
+        giveme_network_packet_handle_update_chain(packet, connection);
+        break;
 
-     case GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE:
-         giveme_network_packet_handle_update_chain_response(packet, connection);
-         break;
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_UPDATE_CHAIN_RESPONSE:
+        giveme_network_packet_handle_update_chain_response(packet, connection);
+        break;
 
-     case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE:
-         giveme_network_packet_handle_downloaded_package(packet, connection);
-         break;
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOADED_PACKAGE:
+        giveme_network_packet_handle_downloaded_package(packet, connection);
+        break;
 
-     case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOAD_PACKAGE_AS_HOST:
-         giveme_network_packet_handle_download_package_as_host(packet, connection);
-         break;
+    case GIVEME_NETWORK_TCP_PACKET_TYPE_DOWNLOAD_PACKAGE_AS_HOST:
+        giveme_network_packet_handle_download_package_as_host(packet, connection);
+        break;
     }
 }
 
@@ -3141,7 +3220,7 @@ void giveme_network_process_action(void *data, size_t d_size)
 }
 void giveme_network_process_action_queue()
 {
-    giveme_network_action_schedule(giveme_network_process_action, NULL, 0);
+    giveme_network_action_schedule(giveme_network_process_action, NULL, 0, ACTION_QUEUE_PRIORITY_HIGH_IMPORTANCE);
 }
 
 void giveme_network_accepted_action(void *data_in, size_t d_size)
@@ -3177,7 +3256,7 @@ int giveme_network_accept_thread(struct queued_work *work)
         }
 
         // The actual work should be handled by the action thread.. Hopefully its processed fast enough!
-        giveme_network_action_schedule(giveme_network_accepted_action, data, sizeof(struct network_connection_data));
+        giveme_network_action_schedule(giveme_network_accepted_action, data, sizeof(struct network_connection_data), ACTION_QUEUE_PRIORITY_HIGH_IMPORTANCE);
     out:
         usleep(10);
     }
