@@ -98,7 +98,7 @@ void giveme_network_action_schedule_for_queue(struct action_queue *action_queue,
  */
 void giveme_network_action_schedule_for_connection(struct network_connection *connection, NETWORK_ACTION_FUNCTION func, void *data, size_t size)
 {
-    if (pthread_mutex_trylock(&connection->lock) == EBUSY)
+    if (pthread_mutex_lock(&connection->lock) == EBUSY)
     {
         return;
     }
