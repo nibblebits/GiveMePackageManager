@@ -180,14 +180,13 @@ int giveme_network_action_next_no_locks(struct action_queue *action_queue, struc
     }
 
     action = vector_back_or_null(chosen_vector);
-    pthread_mutex_unlock(&action_queue->lock);
-
     if (action)
     {
         memcpy(action_out, action, sizeof(struct network_action));
+        vector_pop(chosen_vector);
     }
 
-    vector_pop(chosen_vector);
+    pthread_mutex_unlock(&action_queue->lock);
     return action ? 0 : -1;
 }
 
@@ -207,14 +206,15 @@ int giveme_network_action_next(struct action_queue *action_queue, struct network
     }
 
     action = vector_back_or_null(chosen_vector);
-    pthread_mutex_unlock(&action_queue->lock);
 
     if (action)
     {
         memcpy(action_out, action, sizeof(struct network_action));
+        vector_pop(chosen_vector);
     }
 
-    vector_pop(chosen_vector);
+    pthread_mutex_unlock(&action_queue->lock);
+
     return action ? 0 : -1;
 }
 
@@ -240,7 +240,7 @@ int giveme_network_action_execute_first_no_locks(struct action_queue *action_que
 {
     // We use a stack action because we dont want to hold a lock for an entire
     // execution of the action where memory could easily be spilled and shifted.
-   struct network_action saction;
+    struct network_action saction;
     if (giveme_network_action_next_no_locks(action_queue, &saction) == 0)
     {
         giveme_network_action_execute(&saction);
