@@ -71,16 +71,7 @@ int giveme_network_connection_socket(struct network_connection *connection);
 struct vector *giveme_network_action_get_vector(struct action_queue *queue, int priority)
 {
     struct vector *vec = NULL;
-    if (vector_count(queue->action_vector_low_importance) >= ACTION_QUEUE_LOW_MANDATORY_PRIORITY_COUNT)
-    {
-        // Its been a while, the other vectors are hogging the CPU... we need to help a little.
-        vec = queue->action_vector_low_importance;
-    }
-    else if(vector_count(queue->action_vector_medium_importance) >= ACTION_QUEUE_MEDIUM_MANDATORY_PRIORITY_COUNT)
-    {
-        vec = queue->action_vector_medium_importance;
-    }
-    else if (priority == ACTION_QUEUE_PRIORITY_HIGH_IMPORTANCE)
+    if (priority == ACTION_QUEUE_PRIORITY_HIGH_IMPORTANCE)
     {
         vec = queue->action_vector_high_importance;
     }
