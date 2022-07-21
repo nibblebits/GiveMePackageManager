@@ -73,15 +73,15 @@ struct vector *giveme_network_action_get_vector(struct action_queue *queue, int 
     struct vector *vec = NULL;
     if (priority == ACTION_QUEUE_PRIORITY_HIGH_IMPORTANCE)
     {
-        vec = &queue->action_vector_high_importance;
+        vec = queue->action_vector_high_importance;
     }
     else if (priority == ACTION_QUEUE_PRIORITY_MEDIUM_IMPORTANTANCE)
     {
-        vec = &queue->action_vector_medium_importance;
+        vec = queue->action_vector_medium_importance;
     }
     else if (priority == ACTION_QUEUE_PRIORITY_LOW_IMPORTANCE)
     {
-        vec = &queue->action_vector_low_importance;
+        vec = queue->action_vector_low_importance;
     }
 
     return vec;
@@ -212,7 +212,6 @@ int giveme_network_action_next(struct action_queue *action_queue, struct network
         memcpy(action_out, action, sizeof(struct network_action));
         vector_pop(chosen_vector);
     }
-    usleep(50000);
     pthread_mutex_unlock(&action_queue->lock);
 
     return action ? 0 : -1;
@@ -1325,7 +1324,9 @@ struct network_connection_data *giveme_network_connection_data_new()
     giveme_network_action_queue_initialize(&data->action_queue);
 out:
     if (res < 0)
+    {
         return NULL;
+    }
 
     return data;
 }
