@@ -40,6 +40,12 @@ enum
     GIVEME_CONNECT_FLAG_ADD_TO_CONNECTIONS = 0b00000001
 };
 
+
+// If the count reaches 5 medium queue will be chosen regardless of the other vector counts
+#define ACTION_QUEUE_MEDIUM_MANDATORY_PRIORITY_COUNT 5
+// If the count reaches 10 then the low queue will be chosen regardless of other priority queues.
+#define ACTION_QUEUE_LOW_MANDATORY_PRIORITY_COUNT 10
+
 struct action_queue
 {
     pthread_mutex_t lock;

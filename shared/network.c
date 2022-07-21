@@ -71,7 +71,16 @@ int giveme_network_connection_socket(struct network_connection *connection);
 struct vector *giveme_network_action_get_vector(struct action_queue *queue, int priority)
 {
     struct vector *vec = NULL;
-    if (priority == ACTION_QUEUE_PRIORITY_HIGH_IMPORTANCE)
+    if (vector_count(queue->action_vector_low_importance) >= ACTION_QUEUE_LOW_MANDATORY_PRIORITY_COUNT)
+    {
+        // Its been a while, the other vectors are hogging the CPU... we need to help a little.
+        vec = queue->action_vector_low_importance;
+    }
+    else if(vector_count(queue->action_vector_medium_importance) >= ACTION_QUEUE_MEDIUM_MANDATORY_PRIORITY_COUNT)
+    {
+        vec = queue->action_vector_medium_importance;
+    }
+    else if (priority == ACTION_QUEUE_PRIORITY_HIGH_IMPORTANCE)
     {
         vec = queue->action_vector_high_importance;
     }
@@ -83,6 +92,7 @@ struct vector *giveme_network_action_get_vector(struct action_queue *queue, int 
     {
         vec = queue->action_vector_low_importance;
     }
+
 
     return vec;
 }
@@ -1510,7 +1520,7 @@ void giveme_network_connection_connect_all_action(void *data, size_t d_size)
  */
 void giveme_network_connection_connect_all_action_command_queue()
 {
-    giveme_network_action_schedule(giveme_network_connection_connect_all_action, NULL, 0, ACTION_QUEUE_PRIORITY_MEDIUM_IMPORTANTANCE);
+    giveme_network_action_schedule(giveme_network_connection_connect_all_action, NULL, 0, ACTION_QUEUE_PRIORITY_LOW_IMPORTANCE);
 }
 
 void giveme_network_disconnect(struct network_connection *connection)
@@ -3221,7 +3231,8 @@ void giveme_network_process_action(void *data, size_t d_size)
 }
 void giveme_network_process_action_queue()
 {
-    giveme_network_action_schedule(giveme_network_process_action, NULL, 0, ACTION_QUEUE_PRIORITY_HIGH_IMPORTANCE);
+    // This is called on a loop therefore it must have a low importance to prevent it hogging the CPU.
+    giveme_network_action_schedule(giveme_network_process_action, NULL, 0, ACTION_QUEUE_PRIORITY_LOW_IMPORTANCE);
 }
 
 void giveme_network_accepted_action(void *data_in, size_t d_size)
