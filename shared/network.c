@@ -212,7 +212,7 @@ int giveme_network_action_next(struct action_queue *action_queue, struct network
         memcpy(action_out, action, sizeof(struct network_action));
         vector_pop(chosen_vector);
     }
-
+    usleep(50000);
     pthread_mutex_unlock(&action_queue->lock);
 
     return action ? 0 : -1;
