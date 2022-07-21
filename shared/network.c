@@ -2222,6 +2222,7 @@ void giveme_network_packet_process(struct giveme_tcp_packet *packet, struct netw
         {
             // We do not deal with packets not signed correctly... that is a security concern
             // we ignore all packets not signed properly.
+            giveme_log("%s poorly signed packet\n", __FUNCTION__);
             return;
         }
     }
