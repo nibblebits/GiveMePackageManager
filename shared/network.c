@@ -1451,13 +1451,12 @@ int giveme_network_connect_to_ip(struct in_addr ip)
     return res;
 }
 
-void giveme_network_connect_action(void *data, size_t d_size)
-{
-    struct in_addr *addr = data;
-
-    free(data);
-}
-int giveme_network_connect()
+/**
+ * @brief Connects to the next IP address to peek
+ * 
+ * @return int 
+ */
+int giveme_network_connect_next()
 {
     // If not much time has passed we will wait..
     if (time(NULL) - network.last_attempt_for_new_connections < 5)
@@ -1473,8 +1472,13 @@ int giveme_network_connect()
     // do not want to lock the entire function during this time consuming process of
     // connecting to 100s of IP addresses.
     pthread_mutex_lock(&network.ip_address_lock);
-    vector_set_peek_pointer(network.ip_addresses, 0);
     struct in_addr *ip_address = vector_peek(network.ip_addresses);
+    if (!ip_address)
+    {
+        vector_set_peek_pointer(network.ip_addresses, 0);
+        ip_address = vector_peek(network.ip_addresses);
+    }
+
     struct in_addr ip_address_stack;
     if (ip_address)
     {
@@ -1482,7 +1486,7 @@ int giveme_network_connect()
     }
     pthread_mutex_unlock(&network.ip_address_lock);
 
-    while (ip_address)
+    if (ip_address)
     {
         int err;
         err = giveme_network_connect_to_ip(ip_address_stack);
@@ -1490,13 +1494,6 @@ int giveme_network_connect()
         {
             giveme_log("%s connected to %s\n", __FUNCTION__, inet_ntoa(ip_address_stack));
         }
-        pthread_mutex_lock(&network.ip_address_lock);
-        ip_address = vector_peek(network.ip_addresses);
-        if (ip_address)
-        {
-            ip_address_stack = *ip_address;
-        }
-        pthread_mutex_unlock(&network.ip_address_lock);
     }
 
     network.last_attempt_for_new_connections = time(NULL);
@@ -1507,7 +1504,7 @@ void giveme_network_connection_connect_all_action_command_queue();
 void giveme_network_connection_connect_all_action(void *data, size_t d_size)
 {
 
-    giveme_network_connect();
+    giveme_network_connect_next();
     // We must requeue ourselves
     giveme_network_connection_connect_all_action_command_queue();
 }
@@ -1520,6 +1517,7 @@ void giveme_network_connection_connect_all_action(void *data, size_t d_size)
  */
 void giveme_network_connection_connect_all_action_command_queue()
 {
+    // Low importance as this thing calls its self, we dont want an infinite loop on the action queue
     giveme_network_action_schedule(giveme_network_connection_connect_all_action, NULL, 0, ACTION_QUEUE_PRIORITY_LOW_IMPORTANCE);
 }
 
