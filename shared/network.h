@@ -49,6 +49,10 @@ enum
 struct action_queue
 {
     pthread_mutex_t lock;
+    // Semaphore is posted once all vectors reach zero count
+    // If someone wants to wait until the vectors are all empty wait on this semaphore
+    sem_t zero_in_queue_sem;
+
     // vector of network_action
     struct vector *action_vector_high_importance;
     struct vector* action_vector_medium_importance;
@@ -461,6 +465,9 @@ struct network
     // The action queue for the network
     struct action_queue action_queue;
 
+    time_t last_ip_connect_attempt;
+    time_t last_process_attempt;
+
     // The last hashes that are known to the network for all connected peers
     // we want to pull towards one last hash thats equal for everyone
     // Network will always download the chain to the most popular current last hash.
@@ -546,6 +553,8 @@ int giveme_network_action_queue_thread_start();
 void giveme_network_connection_connect_all_action_command_queue();
 void giveme_network_process_action_queue();
 void giveme_network_accept_thread_start();
+int giveme_network_general_thread_start();
+
 void giveme_network_broadcast(struct giveme_tcp_packet *packet);
 void giveme_network_update_chain();
 int giveme_network_my_awaiting_transaction_add(struct network_awaiting_transaction *transaction);

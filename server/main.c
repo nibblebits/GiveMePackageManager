@@ -58,11 +58,7 @@ int main(int argc, char *argv[])
 	giveme_network_action_queue_thread_start();
 	giveme_network_listen();
 	giveme_network_upnp_port_forward();
-	// Queue the connection operation
-	giveme_network_connection_connect_all_action_command_queue();
-	// Queue the process action queue.
-	giveme_network_process_action_queue();
-
+	giveme_network_general_thread_start();
 
 	giveme_af_unix_listen();
 

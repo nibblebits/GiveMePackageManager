@@ -97,7 +97,8 @@
 // We can tip a maximum of four people who assisted in us downloading a file from.
 #define GIVEME_MAX_TIPS_PER_DOWNLOAD 4
 
-
+// When this is reached the thread pushing to the queue will pause until all have been executed.
+#define GIVEME_MAX_ACTIONS_BEFORE_EXECUTE_ALL 20
 
 enum
 {

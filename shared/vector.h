@@ -11,7 +11,9 @@
 
 // We want at least 20 vector element spaces in reserve before having
 // to reallocate memory again
-#define VECTOR_ELEMENT_INCREMENT 20
+
+#warning "THERS A BUG IN THIS VECTOR IMPLEMENTATION, RESIZE OCCASIONALLY FAILS"
+#define VECTOR_ELEMENT_INCREMENT 2000
 
 enum
 {

@@ -88,6 +88,16 @@ struct vector *giveme_network_action_get_vector(struct action_queue *queue, int 
     return vec;
 }
 
+bool giveme_network_action_queues_full(struct action_queue* action_queue)
+{
+    return vector_count(action_queue->action_vector_low_importance) >= GIVEME_MAX_ACTIONS_BEFORE_EXECUTE_ALL || vector_count(action_queue->action_vector_medium_importance) >= GIVEME_MAX_ACTIONS_BEFORE_EXECUTE_ALL || vector_count(action_queue->action_vector_low_importance) >= GIVEME_MAX_ACTIONS_BEFORE_EXECUTE_ALL;
+}
+
+bool giveme_network_action_queues_empty(struct action_queue* action_queue)
+{
+    return vector_empty(action_queue->action_vector_low_importance) && vector_empty(action_queue->action_vector_medium_importance) && vector_empty(action_queue->action_vector_high_importance);
+}
+
 void giveme_network_action_schedule_for_queue(struct action_queue *action_queue, NETWORK_ACTION_FUNCTION func, void *data, size_t size, int priority)
 {
     struct network_action action;
@@ -102,6 +112,14 @@ void giveme_network_action_schedule_for_queue(struct action_queue *action_queue,
     action.func = func;
 
     pthread_mutex_lock(&action_queue->lock);
+    if (giveme_network_action_queues_full(action_queue))
+    {
+        // The scheduling is too much, theirs a lot of spam.. We must wait until previous
+        // schedules have been dealt with.
+        pthread_mutex_unlock(&action_queue->lock);
+        sem_wait(&action_queue->zero_in_queue_sem);
+        pthread_mutex_lock(&action_queue->lock);
+    }
     struct vector *vec = giveme_network_action_get_vector(action_queue, priority);
     assert(vec);
     vector_push_at(vec, 0, &action);
@@ -147,9 +165,19 @@ void giveme_network_action_schedule_for_connection(struct network_connection *co
     action.func = func;
 
     pthread_mutex_lock(&action_queue->lock);
+    if (giveme_network_action_queues_full(action_queue))
+    {
+        // The scheduling is too much, theirs a lot of spam.. We must wait until previous
+        // schedules have been dealt with.
+        pthread_mutex_unlock(&action_queue->lock);
+        sem_wait(&action_queue->zero_in_queue_sem);
+        pthread_mutex_lock(&action_queue->lock);
+    }
     struct vector *vec = giveme_network_action_get_vector(action_queue, priority);
     assert(vec);
     vector_push_at(vec, 0, &action);
+        printf("new count conn=%i\n",vector_count(vec));
+
     pthread_mutex_unlock(&action_queue->lock);
 
     pthread_mutex_unlock(&connection->lock);
@@ -169,7 +197,6 @@ int giveme_network_action_next_no_locks(struct action_queue *action_queue, struc
 {
     struct network_action *action = NULL;
     struct vector *chosen_vector = NULL;
-    pthread_mutex_lock(&action_queue->lock);
     chosen_vector = action_queue->action_vector_low_importance;
     if (!vector_empty(action_queue->action_vector_high_importance))
     {
@@ -187,7 +214,6 @@ int giveme_network_action_next_no_locks(struct action_queue *action_queue, struc
         vector_pop(chosen_vector);
     }
 
-    pthread_mutex_unlock(&action_queue->lock);
     return action ? 0 : -1;
 }
 
@@ -213,8 +239,19 @@ int giveme_network_action_next(struct action_queue *action_queue, struct network
         memcpy(action_out, action, sizeof(struct network_action));
         vector_pop(chosen_vector);
     }
-    pthread_mutex_unlock(&action_queue->lock);
 
+    bool queues_empty = giveme_network_action_queues_empty(action_queue);
+    pthread_mutex_unlock(&action_queue->lock);
+    if (queues_empty)
+    {
+        // People waiting then a negative value will be present
+        int tmp = 0;
+        if(sem_getvalue(&action_queue->zero_in_queue_sem, &tmp) < 0)
+        {
+            sem_post(&action_queue->zero_in_queue_sem);
+        }
+    }
+    
     return action ? 0 : -1;
 }
 
@@ -259,6 +296,13 @@ int giveme_network_action_queue_initialize(struct action_queue *action_queue)
     }
 
     // Why have one vector and worry about shifting data based on priority.. Screw that three vectors it is.
+    if (sem_init(&action_queue->zero_in_queue_sem, 0, 0) != 0)
+    {
+        // Error: initialization failed
+        giveme_log("%s failed to initialize semaphore\n", __FUNCTION__);
+        res = -1;
+        goto out;
+    }
     action_queue->action_vector_high_importance = vector_create(sizeof(struct network_action));
     action_queue->action_vector_medium_importance = vector_create(sizeof(struct network_action));
     action_queue->action_vector_low_importance = vector_create(sizeof(struct network_action));
@@ -269,10 +313,11 @@ out:
 
 void giveme_network_action_queue_destruct(struct action_queue *action_queue)
 {
-    pthread_mutex_destroy(&action_queue->lock);
-    vector_free(action_queue->action_vector_high_importance);
-    vector_free(action_queue->action_vector_medium_importance);
-    vector_free(action_queue->action_vector_low_importance);
+     pthread_mutex_destroy(&action_queue->lock);
+     sem_destroy(&action_queue->zero_in_queue_sem);
+     vector_free(action_queue->action_vector_high_importance);
+     vector_free(action_queue->action_vector_medium_importance);
+     vector_free(action_queue->action_vector_low_importance);
 }
 
 int giveme_network_action_thread(struct queued_work *work)
@@ -709,6 +754,24 @@ int giveme_network_dataexchange_accept_thread_start()
 int giveme_network_action_queue_thread_start()
 {
     giveme_queue_work(giveme_network_action_thread, NULL);
+    return 0;
+}
+
+int giveme_network_general_thread(struct queued_work* work)
+{
+    while(1)
+    {
+        // Queue the connection operation
+        giveme_network_connection_connect_all_action_command_queue();
+
+        // Queue the process action queue.
+        giveme_network_process_action_queue();
+        usleep(5000000);
+    }
+}
+int giveme_network_general_thread_start()
+{
+    giveme_queue_work(giveme_network_general_thread, NULL);
     return 0;
 }
 
@@ -1494,10 +1557,7 @@ int giveme_network_connect_next()
 void giveme_network_connection_connect_all_action_command_queue();
 void giveme_network_connection_connect_all_action(void *data, size_t d_size)
 {
-
     giveme_network_connect_next();
-    // We must requeue ourselves
-    giveme_network_connection_connect_all_action_command_queue();
 }
 
 /**
@@ -3214,7 +3274,6 @@ void giveme_network_process_action(void *data, size_t d_size)
 
     giveme_network_make_block_if_possible();
     giveme_unlock_chain();
-    usleep(10);
 
     // We must requeue this action so that it will be processed infinetly
     giveme_network_process_action_queue();
