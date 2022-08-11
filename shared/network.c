@@ -1231,7 +1231,7 @@ void giveme_network_load_ips()
     }
     giveme_network_ip_address_add(addr);
 
-    if (inet_aton("159.223.114.44", &addr) == 0)
+    if (inet_aton("104.248.237.170", &addr) == 0)
     {
         giveme_log("inet_aton() failed\n");
     }
