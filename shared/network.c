@@ -111,7 +111,14 @@ void giveme_network_action_schedule_for_queue(struct action_queue *action_queue,
     action.func = func;
 
     pthread_mutex_lock(&action_queue->lock);
-
+    if (giveme_network_action_queues_full(action_queue))
+    {
+        // The scheduling is too much, theirs a lot of spam.. We must wait until previous
+        // schedules have been dealt with.
+        pthread_mutex_unlock(&action_queue->lock);
+        sem_wait(&action_queue->zero_in_queue_sem);
+        pthread_mutex_lock(&action_queue->lock);
+    }
     struct vector *vec = giveme_network_action_get_vector(action_queue, priority);
     assert(vec);
     vector_push_at(vec, 0, &action);
@@ -156,9 +163,18 @@ void giveme_network_action_schedule_for_connection(struct network_connection *co
     action.priority = priority;
     action.func = func;
 
+    if (giveme_network_action_queues_full(action_queue))
+    {
+        // The scheduling is too much, theirs a lot of spam.. We must wait until previous
+        // schedules have been dealt with.
+        pthread_mutex_unlock(&connection->lock);
+        sem_wait(&action_queue->zero_in_queue_sem);
+        pthread_mutex_lock(&connection->lock);
+    }
     struct vector *vec = giveme_network_action_get_vector(action_queue, priority);
     assert(vec);
     vector_push_at(vec, 0, &action);
+    pthread_mutex_unlock(&action_queue->lock);
 
     pthread_mutex_unlock(&connection->lock);
 }
@@ -195,7 +211,18 @@ int giveme_network_action_next_no_locks(struct action_queue *action_queue, struc
         vector_pop(chosen_vector);
     }
 
+    // Split into a seperte function as we are using this in other places
+    bool queues_empty = giveme_network_action_queues_empty(action_queue);
     pthread_mutex_unlock(&action_queue->lock);
+    if (queues_empty)
+    {
+        // People waiting then a negative value will be present
+        int tmp = 0;
+        if (sem_getvalue(&action_queue->zero_in_queue_sem, &tmp) < 0)
+        {
+            sem_post(&action_queue->zero_in_queue_sem);
+        }
+    }
 
     return action ? 0 : -1;
 }
